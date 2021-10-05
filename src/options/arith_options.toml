@@ -563,3 +563,11 @@ name   = "Arithmetic Theory"
   type       = "bool"
   default    = "true"
   help       = "(experimental) whether to use the congruence manager when the equality solver is enabled"
+
+[[option]]
+  name       = "arithIdlExt"
+  category   = "regular"
+  long       = "arith-idl-ext"
+  type       = "bool"
+  default    = "false"
+  help       = "whether to use the IDL extension"

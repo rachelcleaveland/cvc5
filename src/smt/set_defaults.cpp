@@ -361,7 +361,6 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
 
 void SetDefaults::setDefaultsPost(const LogicInfo& logic, Options& opts) const
 {
-
   // sygus core connective requires unsat cores
   if (opts.quantifiers.sygusCoreConnective)
   {
@@ -452,8 +451,9 @@ void SetDefaults::setDefaultsPost(const LogicInfo& logic, Options& opts) const
       // quantifiers, not others opts.set(options::simplificationMode, qf_sat ||
       // quantifiers ? options::SimplificationMode::NONE :
       // options::SimplificationMode::BATCH);
-      opts.smt.simplificationMode = qf_sat ? options::SimplificationMode::NONE
-                                           : options::SimplificationMode::BATCH;
+      opts.smt.simplificationMode = opts.arith.arithIdlExt || qf_sat
+                                        ? options::SimplificationMode::NONE
+                                        : options::SimplificationMode::BATCH;
     }
   }
 

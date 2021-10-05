@@ -66,6 +66,8 @@ enum class InferenceId
   ARITH_CONF_SOI_SIMPLEX,
   // conflict when getting constraint from fact queue
   ARITH_CONF_FACT_QUEUE,
+  // conflict from IDL extension
+  ARITH_CONF_IDL_EXT,
   // introduces split on a disequality
   ARITH_SPLIT_DEQ,
   // tighten integer inequalities to ceiling

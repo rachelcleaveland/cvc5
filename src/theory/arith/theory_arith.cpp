@@ -21,6 +21,8 @@
 #include "smt/smt_statistics_registry.h"
 #include "theory/arith/arith_rewriter.h"
 #include "theory/arith/equality_solver.h"
+#include "theory/arith/idl/idl_extension.h"
+#include "theory/arith/idl/noop_rewriter.h"
 #include "theory/arith/infer_bounds.h"
 #include "theory/arith/nl/nonlinear_extension.h"
 #include "theory/arith/theory_arith_private.h"
@@ -46,9 +48,10 @@ TheoryArith::TheoryArith(Env& env, OutputChannel& out, Valuation valuation)
       d_eqSolver(nullptr),
       d_internal(new TheoryArithPrivate(*this, env, d_bab)),
       d_nonlinearExtension(nullptr),
+      d_idlExtension(nullptr),
       d_opElim(d_env),
       d_arithPreproc(env, d_astate, d_im, d_pnm, d_opElim),
-      d_rewriter(d_opElim)
+      d_rewriter(nullptr)
 {
   // currently a cyclic dependency to TheoryArithPrivate
   d_astate.setParent(d_internal);
@@ -60,13 +63,22 @@ TheoryArith::TheoryArith(Env& env, OutputChannel& out, Valuation valuation)
   {
     d_eqSolver.reset(new EqualitySolver(env, d_astate, d_im));
   }
+
+  if (options().arith.arithIdlExt)
+  {
+    d_rewriter.reset(new idl::NoopRewriter());
+  }
+  else
+  {
+    d_rewriter.reset(new ArithRewriter(d_opElim));
+  }
 }
 
 TheoryArith::~TheoryArith(){
   delete d_internal;
 }
 
-TheoryRewriter* TheoryArith::getTheoryRewriter() { return &d_rewriter; }
+TheoryRewriter* TheoryArith::getTheoryRewriter() { return d_rewriter.get(); }
 
 ProofRuleChecker* TheoryArith::getProofChecker()
 {
@@ -103,6 +115,10 @@ void TheoryArith::finishInit()
     d_nonlinearExtension.reset(
         new nl::NonlinearExtension(d_env, *this, d_astate));
   }
+  if (options().arith.arithIdlExt)
+  {
+    d_idlExtension.reset(new idl::IdlExtension(d_env, *this));
+  }
   if (d_eqSolver != nullptr)
   {
     d_eqSolver->finishInit();
@@ -113,6 +129,11 @@ void TheoryArith::finishInit()
 
 void TheoryArith::preRegisterTerm(TNode n)
 {
+  if (d_idlExtension != nullptr)
+  {
+    d_idlExtension->preRegisterTerm(n);
+    return;
+  }
   if (d_nonlinearExtension != nullptr)
   {
     d_nonlinearExtension->preRegisterTerm(n);
@@ -124,6 +145,19 @@ void TheoryArith::notifySharedTerm(TNode n) { d_internal->notifySharedTerm(n); }
 
 TrustNode TheoryArith::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
 {
+  if (d_idlExtension != nullptr)
+  {
+    Node atomr = d_idlExtension->ppRewrite(atom, lems);
+    if (atom != atomr)
+    {
+      return TrustNode::mkTrustRewrite(atom, atomr);
+    }
+    else
+    {
+      return TrustNode::null();
+    }
+  }
+
   CodeTimer timer(d_ppRewriteTimer, /* allow_reentrant = */ true);
   Debug("arith::preprocess") << "arith::preprocess() : " << atom << endl;
 
@@ -144,16 +178,28 @@ TrustNode TheoryArith::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
 Theory::PPAssertStatus TheoryArith::ppAssert(
     TrustNode tin, TrustSubstitutionMap& outSubstitutions)
 {
+  if (d_idlExtension != nullptr)
+  {
+    return Theory::PP_ASSERT_STATUS_UNSOLVED;
+  }
   return d_internal->ppAssert(tin, outSubstitutions);
 }
 
 void TheoryArith::ppStaticLearn(TNode n, NodeBuilder& learned)
 {
+  if (d_idlExtension != nullptr)
+  {
+    return;
+  }
   d_internal->ppStaticLearn(n, learned);
 }
 
 bool TheoryArith::preCheck(Effort level)
 {
+  if (d_idlExtension != nullptr)
+  {
+    return false;
+  }
   Trace("arith-check") << "TheoryArith::preCheck " << level << std::endl;
   return d_internal->preCheck(level);
 }
@@ -161,6 +207,13 @@ bool TheoryArith::preCheck(Effort level)
 void TheoryArith::postCheck(Effort level)
 {
   d_im.reset();
+
+  if (d_idlExtension != nullptr)
+  {
+    d_idlExtension->postCheck(level);
+    return;
+  }
+
   Trace("arith-check") << "TheoryArith::postCheck " << level << std::endl;
   // check with the non-linear solver at last call
   if (level == Theory::EFFORT_LAST_CALL)
@@ -210,6 +263,11 @@ void TheoryArith::postCheck(Effort level)
 bool TheoryArith::preNotifyFact(
     TNode atom, bool pol, TNode fact, bool isPrereg, bool isInternal)
 {
+  if (d_idlExtension != nullptr)
+  {
+    return true;
+  }
+
   Trace("arith-check") << "TheoryArith::preNotifyFact: " << fact
                        << ", isPrereg=" << isPrereg
                        << ", isInternal=" << isInternal << std::endl;
@@ -256,6 +314,10 @@ void TheoryArith::propagate(Effort e) {
 bool TheoryArith::collectModelInfo(TheoryModel* m,
                                    const std::set<Node>& termSet)
 {
+  if (d_idlExtension != nullptr)
+  {
+    return d_idlExtension->collectModelInfo(m, termSet);
+  }
   // this overrides behavior to not assert equality engine
   return collectModelValues(m, termSet);
 }
@@ -319,6 +381,11 @@ void TheoryArith::notifyRestart(){
 }
 
 void TheoryArith::presolve(){
+  if (d_idlExtension != nullptr)
+  {
+    d_idlExtension->presolve();
+    return;
+  }
   d_internal->presolve();
 }
 

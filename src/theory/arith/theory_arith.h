@@ -29,6 +29,9 @@
 namespace cvc5 {
 namespace theory {
 namespace arith {
+namespace idl {
+class IdlExtension;
+}
 namespace nl {
 class NonlinearExtension;
 }
@@ -166,12 +169,17 @@ class TheoryArith : public Theory {
    * arithmetic.
    */
   std::unique_ptr<nl::NonlinearExtension> d_nonlinearExtension;
+  /**
+   * The IDL extension, responsible for handling integer difference logic
+   * constraints.
+   */
+  std::unique_ptr<idl::IdlExtension> d_idlExtension;
   /** The operator elimination utility */
   OperatorElim d_opElim;
   /** The preprocess utility */
   ArithPreprocess d_arithPreproc;
   /** The theory rewriter for this theory. */
-  ArithRewriter d_rewriter;
+  std::unique_ptr<TheoryRewriter> d_rewriter;
 
   /**
    * Caches the current arithmetic model with the following life cycle:
