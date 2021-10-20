@@ -81,6 +81,9 @@ class IdlExtension : protected EnvObj
   /** Print the matrix */
   void printMatrix(const std::vector<std::vector<Rational>>& matrix,
                    const std::vector<std::vector<bool>>& valid);
+  void printMatrix_cd(const std::vector<std::vector<context::CDO<Rational>>>& matrix,
+                      const std::vector<std::vector<context::CDO<bool>>>& valid);
+
 
   typedef context::CDHashMap<TNode, size_t> TNodeToUnsignedCDMap;
 
@@ -95,12 +98,17 @@ class IdlExtension : protected EnvObj
 
   /** i,jth entry is true iff there is an edge from i to j. */
   std::vector<std::vector<bool>> d_valid;
+  std::vector<std::vector<context::CDO<bool>>> d_valid_cd;
 
   /** i,jth entry stores weight for edge from i to j. */
   std::vector<std::vector<Rational>> d_matrix;
+  std::vector<std::vector<context::CDO<Rational>>> d_matrix_cd;
 
   /** Number of variables in the graph */
   size_t d_numVars;
+
+  inline TNode get();
+
 }; /* class IdlExtension */
 
 }  // namespace idl

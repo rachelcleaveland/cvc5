@@ -46,7 +46,8 @@ class TheoryArithPrivate;
  */
 class TheoryArith : public Theory {
   friend class TheoryArithPrivate;
- public:
+  friend class idl::IdlExtension;
+public:
   TheoryArith(Env& env, OutputChannel& out, Valuation valuation);
   virtual ~TheoryArith();
 

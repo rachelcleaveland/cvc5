@@ -65,6 +65,7 @@ void IdlExtension::presolve()
     d_matrix.emplace_back(d_numVars);
     d_valid.emplace_back(d_numVars, false);
   }
+
 }
 
 Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
@@ -72,6 +73,7 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
   Trace("theory::arith::idl")
       << "IdlExtension::ppRewrite(): processing " << atom << std::endl;
   NodeManager* nm = NodeManager::currentNM();
+
   switch (atom.getKind())
   {
     case kind::EQUAL:
@@ -89,11 +91,33 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
     // TODO: Handle these cases.
     // -------------------------------------------------------------------------
     case kind::LT:
+    {
+      Assert(atom[0].getKind() == kind::MINUS);
+      const Rational& right = atom[1].getConst<Rational>();
+      Node new_right = nm->mkConst(right - 1);
+      return nm->mkNode(kind::LEQ, atom[0], new_right);
+    }
     case kind::LEQ:
+    {
+      Assert(atom[0].getKind() == kind::MINUS);
+      return atom;
+    }
     case kind::GT:
+    {
+      Assert(atom[0].getKind() == kind::MINUS);
+      Node negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      const Rational& right = atom[1].getConst<Rational>();
+      Node negated_right = nm->mkConst(-right - 1);
+      return nm->mkNode(kind::LEQ, negated_left, negated_right);
+    }
     case kind::GEQ:
-    case kind::NOT:
-      // -------------------------------------------------------------------------
+    {
+      Node negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      const Rational& right = atom[1].getConst<Rational>();
+      Node negated_right = nm->mkConst(-right);
+      return nm->mkNode(kind::LEQ, negated_left, negated_right);
+    }
+    // -------------------------------------------------------------------------
 
     default: break;
   }
@@ -118,6 +142,7 @@ void IdlExtension::postCheck(Theory::Effort level)
   }
 
   // Reset the graph
+
   for (size_t i = 0; i < d_numVars; i++)
   {
     for (size_t j = 0; j < d_numVars; j++)
@@ -132,6 +157,7 @@ void IdlExtension::postCheck(Theory::Effort level)
     // this theory solver. A better implementation would use `Theory::get()` to
     // only get new assertions.
     Assertion assertion = (*i);
+
     Trace("theory::idl") << "IdlExtension::check(): processing "
                          << assertion.d_assertion << std::endl;
     processAssertion(assertion.d_assertion);
@@ -167,6 +193,17 @@ bool IdlExtension::collectModelInfo(TheoryModel* m,
   // path from a node that has distance zero to all other nodes
   // ---------------------------------------------------------------------------
 
+  for (size_t i = 0; i < d_numVars; i++) {
+    for (size_t j = 0; j < d_numVars; j++) {
+      if (d_valid[i][j]) {
+	if (distance[j] > distance[i] + d_matrix[i][j]) {
+	  distance[j] = distance[i] + d_matrix[i][j];
+	}
+      }
+    }
+  }
+
+
   NodeManager* nm = NodeManager::currentNM();
   for (size_t i = 0; i < d_numVars; i++)
   {
@@ -199,15 +236,53 @@ void IdlExtension::processAssertion(TNode assertion)
   size_t index1 = d_varMap[var1];
   size_t index2 = d_varMap[var2];
 
-  d_valid[index1][index2] = true;
-  d_matrix[index1][index2] = value;
+
+  if (d_valid[index1][index2]) {
+    if (d_matrix[index1][index2] > value) {
+      d_matrix[index1][index2] = value;
+    }
+  } else {
+    d_valid[index1][index2] = true;
+    d_matrix[index1][index2] = value;
+  }
 }
+
+void printDist(size_t numVars, const std::vector<Rational>& dists) {
+  std::cout << "      ";
+  for (size_t j = 0; j < numVars; j++) {
+    std::cout << std::setw(6) << dists[j];
+  }
+  std::cout << std::endl;
+}
+
 
 bool IdlExtension::negativeCycle()
 {
   // --------------------------------------------------------------------------
   // TODO: write the code to detect a negative cycle.
   // --------------------------------------------------------------------------
+  std::vector<Rational> dist(d_numVars,0);
+
+
+  for (size_t i = 0; i < d_numVars; i++) {
+    for (size_t j = 0; j < d_numVars; j++) {
+      if (d_valid[i][j]) {
+	if (dist[j] > dist[i] + d_matrix[i][j]) {
+	  dist[j] = dist[i] + d_matrix[i][j];
+	}
+      }
+    }
+  }
+
+  for (size_t i = 0; i < d_numVars; i++) {
+    for (size_t j = 0; j < d_numVars; j++) {
+      if (d_valid[i][j]) {
+	if (dist[j] > dist[i] + d_matrix[i][j]) {
+	  return true;
+	}
+      }
+    }
+  }
 
   return false;
 }
@@ -229,6 +304,33 @@ void IdlExtension::printMatrix(const std::vector<std::vector<Rational>>& matrix,
       if (valid[i][j])
       {
         std::cout << std::setw(6) << matrix[i][j];
+      }
+      else
+      {
+        std::cout << std::setw(6) << "oo";
+      }
+    }
+    std::cout << std::endl;
+  }
+}
+
+void IdlExtension::printMatrix_cd(const std::vector<std::vector<context::CDO<Rational>>>& matrix,
+                                  const std::vector<std::vector<context::CDO<bool>>>& valid)
+{
+  std::cout << "      ";
+  for (size_t j = 0; j < d_numVars; ++j)
+  {
+    std::cout << std::setw(6) << d_varList[j];
+  }
+  std::cout << std::endl;
+  for (size_t i = 0; i < d_numVars; ++i)
+  {
+    std::cout << std::setw(6) << d_varList[i];
+    for (size_t j = 0; j < d_numVars; ++j)
+    {
+      if (valid[i][j].get())
+      {
+        std::cout << std::setw(6) << matrix[i][j].get();
       }
       else
       {
