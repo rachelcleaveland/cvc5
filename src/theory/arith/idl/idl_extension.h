@@ -39,12 +39,15 @@ class IdlExtension : protected EnvObj
 {
  public:
   IdlExtension(Env& env, TheoryArith& parent);
+  ~IdlExtension();
 
   /** Register a term that is in the formula */
   void preRegisterTerm(TNode);
 
   /** Set up the solving data structures */
   void presolve();
+
+  void notifyFact(TNode atom, bool pol, TNode fact, bool isPrereg, bool isInternal); //TNode atom, bool polarity, TNode fact);
 
   /** Pre-processing of input atoms */
   Node ppRewrite(TNode atom, std::vector<SkolemLemma>& lems);
@@ -81,8 +84,10 @@ class IdlExtension : protected EnvObj
   /** Print the matrix */
   void printMatrix(const std::vector<std::vector<Rational>>& matrix,
                    const std::vector<std::vector<bool>>& valid);
-  void printMatrix_cd(const std::vector<std::vector<context::CDO<Rational>>>& matrix,
-                      const std::vector<std::vector<context::CDO<bool>>>& valid);
+  void printMatrix_cd(context::CDO<Rational>*** matrix,
+                      context::CDO<bool>*** valid);
+  void printMatrix_cd_vec(std::vector<std::vector<context::CDO<Rational>*>> matrix,
+                      std::vector<std::vector<context::CDO<bool>*>> valid);
 
 
   typedef context::CDHashMap<TNode, size_t> TNodeToUnsignedCDMap;
@@ -98,17 +103,35 @@ class IdlExtension : protected EnvObj
 
   /** i,jth entry is true iff there is an edge from i to j. */
   std::vector<std::vector<bool>> d_valid;
-  std::vector<std::vector<context::CDO<bool>>> d_valid_cd;
+  //std::vector<std::vector<context::CDO<bool>>> d_valid_cd;
+  // Current : malloced array of CDOs
+  // context::CDO<bool>** d_valid_cd;
+  context::CDO<bool>*** d_valid_cd;
+  // std::vector<std::vector<context::CDO<bool>*>> d_valid_cd;
+
+  //context::CDO<bool>* test;
 
   /** i,jth entry stores weight for edge from i to j. */
   std::vector<std::vector<Rational>> d_matrix;
-  std::vector<std::vector<context::CDO<Rational>>> d_matrix_cd;
+  //std::vector<std::vector<context::CDO<Rational>>> d_matrix_cd;
+  // Current : malloced array of CDOs
+  // context::CDO<Rational>** d_matrix_cd;
+  context::CDO<Rational>*** d_matrix_cd;
+  // std::vector<std::vector<context::CDO<Rational>*>> d_matrix_cd;
+  
+  context::CDO<Rational>** dist;
+
+  std::vector<std::vector<context::CDO<Rational>*>> d_matrix_cd_vec;
+  std::vector<std::vector<context::CDO<bool>*>> d_valid_cd_vec;
 
   /** Number of variables in the graph */
   size_t d_numVars;
 
   inline TNode get();
+  context::CDO<bool> negative_cycle;
 
+  //std::queue<Assertion> assertion_queue;
+  //std::queue<std::tuple<size_t, size_t>> new_edges_queue;
 }; /* class IdlExtension */
 
 }  // namespace idl
