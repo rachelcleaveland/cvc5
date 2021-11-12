@@ -36,8 +36,18 @@ IdlExtension::IdlExtension(Env& env, TheoryArith& parent)
       d_varMap(context()),
       d_varList(context()),
       d_numVars(0),
-      negative_cycle(context(), false)
+      negative_cycle(context(), false),
+      conflictPath(context())
 {
+}
+
+
+void printDist(size_t numVars, context::CDO<Rational>**  dists) {
+  std::cout << "      ";
+  for (size_t j = 0; j < numVars; j++) {
+    std::cout << std::setw(6) << dists[j]->get();
+  }
+  std::cout << std::endl;
 }
 
 void IdlExtension::preRegisterTerm(TNode node)
@@ -69,20 +79,21 @@ void IdlExtension::presolve()
 
   // Current : malloced array of CDOs
   d_matrix_cd = (context::CDO<Rational>***)malloc(sizeof(context::CDO<Rational>**) * d_numVars);
-  d_valid_cd = (context::CDO<bool>***)malloc(sizeof(context::CDO<bool>**) * d_numVars);
+  d_valid_cd = (context::CDO<validOptions>***)malloc(sizeof(context::CDO<validOptions>**) * d_numVars);
   dist = (context::CDO<Rational>**)malloc(sizeof(context::CDO<Rational>*) * d_numVars);
+  conflictStart = new(true) context::CDO(d_env.getContext(), std::make_tuple((size_t)0,(size_t)0,Rational(0)));
 
   for (size_t i = 0; i < d_numVars; ++i)
   {
     // Current : malloced array of pointers to CDOs
     d_matrix_cd[i] = (context::CDO<Rational>**)malloc(sizeof(context::CDO<Rational>*) * d_numVars);
-    d_valid_cd[i] = (context::CDO<bool>**)malloc(sizeof(context::CDO<bool>*) * d_numVars);
+    d_valid_cd[i] = (context::CDO<validOptions>**)malloc(sizeof(context::CDO<validOptions>*) * d_numVars);
     dist[i] = new(true) context::CDO(d_env.getContext(), Rational(0));
 
   for (size_t j = 0; j < d_numVars; ++j) 
     {
       // Current : malloced array of pointers to CDOs
-      d_valid_cd[i][j] = new(true) context::CDO(d_env.getContext(), false);
+      d_valid_cd[i][j] = new(true) context::CDO(d_env.getContext(), INVALID);
       d_matrix_cd[i][j] = new(true) context::CDO(d_env.getContext(), Rational(0));
 
     }
@@ -157,6 +168,61 @@ Theory::assertions_iterator IdlExtension::facts_end() const
   return d_parent.facts_end();
 }
 
+Node IdlExtension::constructConflict() {
+
+  NodeManager* nm = NodeManager::currentNM();
+  size_t firstNode = conflictPath[conflictPath.size()-1];
+  size_t secondNode = conflictPath[0];
+  Rational w = d_matrix_cd[firstNode][secondNode]->get();
+
+  bool polarity = d_valid_cd[firstNode][secondNode]->get() == POSITIVE;
+
+  size_t firstNodeCon = firstNode;
+  size_t secondNodeCon = secondNode;
+  
+  if (!polarity) {
+    std::swap(firstNodeCon, secondNodeCon);
+    w = -(w + Rational(1));    
+  }
+  
+  NodeBuilder conjunction(kind::AND);
+
+  Node constW = nm->mkConst(w);
+  Node initialConflict = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[firstNodeCon], d_varList[secondNodeCon]), constW); //nm->mkConst(w));
+
+  if (!polarity) {
+    initialConflict = nm->mkNode(kind::NOT, initialConflict);
+  }
+
+  conjunction << initialConflict;
+
+  for (size_t k = 0; k < conflictPath.size() - 1; k++) {
+    size_t prevIdx = conflictPath[k];
+    size_t currIdx = conflictPath[k+1];
+    Rational weight = d_matrix_cd[prevIdx][currIdx]->get();
+
+    polarity = d_valid_cd[prevIdx][currIdx]->get() == POSITIVE;
+
+    if (!polarity) {
+      std::swap(prevIdx, currIdx);
+      weight = -(weight + Rational(1));    
+    }
+
+    Node constWeight = nm->mkConst(weight);
+
+    Node exprExt = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[prevIdx], d_varList[currIdx]), constWeight); //nm->mkConst(weight)); 
+    
+    if (!polarity) {
+      exprExt = nm->mkNode(kind::NOT, exprExt);
+    }
+
+    conjunction << exprExt;
+  }
+  Node conflict = conjunction;
+
+  return conflict;
+}
+
 void IdlExtension::postCheck(Theory::Effort level)
 {
   if (!Theory::fullEffort(level))
@@ -165,16 +231,10 @@ void IdlExtension::postCheck(Theory::Effort level)
   }
 
   if (negativeCycle())
-  {
-    // Return a conflict that includes all the literals that have been asserted
-    // to this theory solver. A better implementation would only include the
-    // literals involved in the conflict here.
-    NodeBuilder conjunction(kind::AND);
-    for (Theory::assertions_iterator i = facts_begin(); i != facts_end(); ++i)
-    {
-      conjunction << (*i).d_assertion;
-    }
-    Node conflict = conjunction;
+  { 
+
+    Node conflict = constructConflict();
+
     // Send the conflict using the inference manager. Each conflict is assigned
     // an ID. Here, we use  ARITH_CONF_IDL_EXT, which indicates a generic
     // conflict detected by this extension
@@ -193,17 +253,6 @@ bool IdlExtension::collectModelInfo(TheoryModel* m,
   // TODO: implement model generation by computing the single-source shortest
   // path from a node that has distance zero to all other nodes
   // ---------------------------------------------------------------------------
-/*
-  for (size_t i = 0; i < d_numVars; i++) {
-    for (size_t j = 0; j < d_numVars; j++) {
-      if (d_valid[i][j]) {
-	if (distance[j] > distance[i] + d_matrix[i][j]) {
-	  distance[j] = distance[i] + d_matrix[i][j];
-	}
-      }
-    }
-  }
-*/
   for (size_t i = 0; i < d_numVars; i++) {
     for (size_t j = 0; j < d_numVars; j++) {
       if (d_valid_cd[i][j]->get()) {
@@ -224,6 +273,52 @@ bool IdlExtension::collectModelInfo(TheoryModel* m,
   return true;
 }
 
+bool IdlExtension::negativeCycleCheck(std::vector<bool> visited, size_t nextIdx, int level, std::vector<size_t> path) {
+  //printDist(d_numVars, dist);
+  if (visited[nextIdx]) {
+    if (!negative_cycle.get()) {
+      negative_cycle.set(true);
+      bool started = false;
+      for (size_t k = 0; k < path.size(); k++) {
+        if (!started && path[k] == nextIdx) {
+          started = true;
+	}
+	if (started) {
+	  conflictPath.push_back(path[k]);
+	}
+      }
+
+      size_t i = path[path.size()-1];
+      conflictStart->set(std::make_tuple(i,nextIdx,d_matrix_cd[i][nextIdx]->get()));
+    }
+    return true;
+
+  } else {
+
+    visited[nextIdx] = true;
+    for (size_t i = 0; i < d_numVars; i++) { //Update outgoing edges of each updated edge
+      if (d_valid_cd[nextIdx][i]->get() != INVALID) {
+	//std::cout << "checking edge " << nextIdx << " " << i << std::endl;
+	//std::cout << "dist[" << i << "] = " << dist[i]->get() << " >? " << dist[nextIdx]->get() << " + " << d_matrix_cd[nextIdx][i]->get() << std::endl;
+	if (dist[i]->get() > dist[nextIdx]->get() + d_matrix_cd[nextIdx][i]->get()) {
+	  dist[i]->set(dist[nextIdx]->get() + d_matrix_cd[nextIdx][i]->get());
+	  std::vector<size_t> newPath = path;
+	  //std::vector<bool> visitedTemp = visited;
+	  //std::cout << "adding " << i << std::endl;
+	  newPath.push_back(nextIdx);
+	  if (negativeCycleCheck(visited,i,level+1,newPath)) {
+  	    //std::cout << "negativeCycleCheck on " << nextIdx << " " << i << std::endl;
+	    return true;	   
+	  } //Push each updated vertex to the queue
+        }
+      }
+    }
+
+
+  }
+  return false;
+}
+
 void IdlExtension::processAssertion(TNode assertion)
 {
   bool polarity = assertion.getKind() != kind::NOT;
@@ -237,10 +332,12 @@ void IdlExtension::processAssertion(TNode assertion)
                        ? -atom[1][0].getConst<Rational>()
                        : atom[1].getConst<Rational>();
 
+  validOptions validity = POSITIVE;
   if (!polarity)
   {
     std::swap(var1, var2);
     value = -value - Rational(1);
+    validity = NEGATIVE;
   }
 
   size_t index1 = d_varMap[var1];
@@ -250,85 +347,26 @@ void IdlExtension::processAssertion(TNode assertion)
   if ((d_valid_cd[index1][index2])->get()) {
     if (d_matrix_cd[index1][index2]->get() > value) {
       d_matrix_cd[index1][index2]->set(value);
+      d_valid_cd[index1][index2]->set(validity);
     }
   } else {
-    d_valid_cd[index1][index2]->set(true);
+    d_valid_cd[index1][index2]->set(validity);
     d_matrix_cd[index1][index2]->set(value);
   }
 
-
-  //printMatrix_cd(d_matrix_cd, d_valid_cd);
-  //new_edges_queue.push(std::make_tuple(index1,index2));
-
-  /*
-  if ((d_valid_cd_vec[index1][index2])->get()) {
-    if (d_matrix_cd_vec[index1][index2]->get() > value) {
-      d_matrix_cd_vec[index1][index2]->set(value);
-    }
-  } else {
-    d_valid_cd_vec[index1][index2]->set(true);
-    d_matrix_cd_vec[index1][index2]->set(value);
-  }
-  */
-  std::queue<size_t> toVisit;
   std::vector<bool> visited(d_numVars, false);
-
-  /* New way of detecting negative cycles */
-  if (dist[index2]->get() > dist[index1]->get() + d_matrix_cd[index1][index2]->get()) {
-    dist[index2]->set(dist[index1]->get() + d_matrix_cd[index1][index2]->get());
-    toVisit.push(index2);
-  } //dist[index2] only reduces here
-
-  while (!toVisit.empty()) {
-    size_t nextIdx = toVisit.front();
-    toVisit.pop();
-
-    if (visited[nextIdx]) {
-      for (size_t i = 0; i < d_numVars; i++) {
-	if (d_valid_cd[nextIdx][i]->get()) {
-	  if (dist[i]->get() > dist[nextIdx]->get() + d_matrix_cd[nextIdx][i]->get()) {
-	    negative_cycle.set(true);
-	  }
-	}
-      }
-
-    } else {
-
-      for (size_t i = 0; i < d_numVars; i++) { //Update outgoing edges of each updated edge
-	if (d_valid_cd[nextIdx][i]->get()) {
-	  if (dist[i]->get() > dist[nextIdx]->get() + d_matrix_cd[nextIdx][i]->get()) {
-	    dist[i]->set(dist[nextIdx]->get() + d_matrix_cd[nextIdx][i]->get());
-	    toVisit.push(i); //Push each updated vertex to the queue
-	  }
-	}
-      }
-
-      visited[nextIdx] = true;
-
+ 
+  if (d_valid_cd[index1][index2]->get()) {
+    if (dist[index2]->get() > dist[index1]->get() + d_matrix_cd[index1][index2]->get()) {
+      dist[index2]->set(dist[index1]->get() + d_matrix_cd[index1][index2]->get());
     }
   }
 
-  /*
   if (!negative_cycle.get()) {
-    for (size_t j = 0; j < d_numVars; j++) {
-      if (d_valid_cd[index2][j]->get()) {
-        if (dist[j]->get() > dist[index2]->get() + d_matrix_cd[index2][j]->get()) {
-          negative_cycle.set(true);
-        }
-      }
-    }
+    //std::cout << "negativeCycleCheck on " << index1 << " " << index2 << std::endl;
+    negativeCycleCheck(visited, index2, 0, {});
   }
-  */
 
-  //printMatrix_cd(d_matrix_cd, d_valid_cd);
-}
-
-void printDist(size_t numVars, const std::vector<Rational>& dists) {
-  std::cout << "      ";
-  for (size_t j = 0; j < numVars; j++) {
-    std::cout << std::setw(6) << dists[j];
-  }
-  std::cout << std::endl;
 }
 
 
@@ -338,152 +376,14 @@ bool IdlExtension::negativeCycle()
   // TODO: write the code to detect a negative cycle.
   // --------------------------------------------------------------------------
 
-  //printMatrix_cd(d_matrix_cd, d_valid_cd);
-  //std::cout << "negativeCycle" << std::endl;
-
-  /*
-  //Update distance vector, CD matrix
-  std::vector<Rational> dist(d_numVars,0);
-  for (size_t k = 0; k < d_numVars; k++) {
-    for (size_t i = 0; i < d_numVars; i++) {
-      for (size_t j = 0; j < d_numVars; j++) {
-        if (d_valid_cd[i][j]->get()) {
-	  if (dist[j] > dist[i] + d_matrix_cd[i][j]->get()) {
-	    dist[j] = dist[i] + d_matrix_cd[i][j]->get();
-	  }
-        }
-      }
-    }
-  }
-  */
-  
-
-/*  Update distance vector, queue of indices
-  std::vector<size_t> modified_dists;
-
-  while (!new_edges_queue.empty()) {
-    std::tuple<size_t, size_t> ij = new_edges_queue.front();
-    new_edges_queue.pop();
-
-    size_t i = std::get<0>(ij);
-    size_t j = std::get<1>(ij);
-    if (d_valid_cd[i][j]->get()) {
-      if (dist[j] > dist[i] + d_matrix_cd[i][j]->get()) {
-        modified_dists.push_back(j);
-        dist[j] = dist[i] + d_matrix_cd[i][j]->get();
-      }
-    }
- }
-*/
- 
-/* Update negative cycle, only modified indices
-  size_t mod_size = modified_dists.size();
-
-  for (size_t i = 0; i < mod_size; i++) {  
-    for (size_t j = 0; j < mod_size; j++) {
-
-      size_t modi = modified_dists[i];
-      size_t modj = modified_dists[j];
-
-      if (d_valid_cd[modi][modj]->get()) {
-	if (dist[modj] > dist[modi] + d_matrix_cd[modi][modj]->get()) {
-	  return true;
-	}
-      }
-     
-    }
-  }
-  */
-
-  /* 
-  // Return negative cycle, CD matrix, CD dist
-  for (size_t i = 0; i < d_numVars; i++) {
-    for (size_t j = 0; j < d_numVars; j++) {
-      if (d_valid_cd[i][j]->get()) {
-	if (dist[j]->get() > dist[i]->get() + d_matrix_cd[i][j]->get()) {
-	  return true;
-	}
-      }
-    }
-  }
-  */
-
-  /* 
-  // Return negative cycle, CD matrix, non-CD dist
-  for (size_t i = 0; i < d_numVars; i++) {
-    for (size_t j = 0; j < d_numVars; j++) {
-      if (d_valid_cd[i][j]->get()) {
-	if (dist[j] > dist[i] + d_matrix_cd[i][j]->get()) {
-	  return true;
-	}
-      }
-    }
-  }
-  */
-
   return negative_cycle.get();
 
-  //return false;
-}
-
-void IdlExtension::printMatrix(const std::vector<std::vector<Rational>>& matrix,
-                               const std::vector<std::vector<bool>>& valid)
-{
-  std::cout << "      ";
-  for (size_t j = 0; j < d_numVars; ++j)
-  {
-    std::cout << std::setw(6) << d_varList[j];
-  }
-  std::cout << std::endl;
-  for (size_t i = 0; i < d_numVars; ++i)
-  {
-    std::cout << std::setw(6) << d_varList[i];
-    for (size_t j = 0; j < d_numVars; ++j)
-    {
-      if (valid[i][j])
-      {
-        std::cout << std::setw(6) << matrix[i][j];
-      }
-      else
-      {
-        std::cout << std::setw(6) << "oo";
-      }
-    }
-    std::cout << std::endl;
-  }
 }
 
 void IdlExtension::printMatrix_cd(context::CDO<Rational>*** matrix,
-                                  context::CDO<bool>*** valid)
+                                  context::CDO<validOptions>*** valid)
 {
   std::cout << "cd mat";
-  for (size_t j = 0; j < d_numVars; ++j)
-  {
-    std::cout << std::setw(6) << d_varList[j];
-  }
-  std::cout << std::endl;
-  for (size_t i = 0; i < d_numVars; ++i)
-  {
-    std::cout << std::setw(6) << d_varList[i];
-    for (size_t j = 0; j < d_numVars; ++j)
-    {
-      if (valid[i][j]->get())
-      {
-        std::cout << std::setw(6) << matrix[i][j]->get();
-      }
-      else
-      {
-        std::cout << std::setw(6) << "oo";
-      }
-    }
-    std::cout << std::endl;
-  }
-}
-
-void IdlExtension::printMatrix_cd_vec(std::vector<std::vector<context::CDO<Rational>*>> matrix,
-                                      std::vector<std::vector<context::CDO<bool>*>> valid)
-{
-  std::cout << "cd vec";
   for (size_t j = 0; j < d_numVars; ++j)
   {
     std::cout << std::setw(6) << d_varList[j];
@@ -528,6 +428,7 @@ IdlExtension::~IdlExtension() {
   free(d_matrix_cd);
   free(d_valid_cd);
   free(dist);
+  conflictStart->deleteSelf();
 }
 
 }  // namespace idl

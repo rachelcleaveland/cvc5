@@ -30,7 +30,14 @@ class NoopRewriter : public TheoryRewriter
  public:
   RewriteResponse preRewrite(TNode n) override
   {
-    return RewriteResponse(REWRITE_DONE, n);
+    
+    NodeManager* nm = NodeManager::currentNM();
+    
+    if (n.getKind() == kind::UMINUS) {
+      return RewriteResponse(REWRITE_DONE, TNode(nm->mkConst(-n[0].getConst<Rational>()))); //reNode); //n);
+    }
+    
+    return RewriteResponse(REWRITE_DONE, n); //reNode); //n);
   }
   RewriteResponse postRewrite(TNode n) override
   {
