@@ -44,6 +44,8 @@ class IdlExtension : protected EnvObj
   /** Register a term that is in the formula */
   void preRegisterTerm(TNode);
 
+  void allocateMatrices(size_t dimension);
+
   /** Set up the solving data structures */
   void presolve();
 
@@ -82,7 +84,7 @@ class IdlExtension : protected EnvObj
     NEGATIVE = 2
   };
 
- bool negativeCycleCheck(std::vector<bool> visited, size_t nextIdx, int level, std::vector<size_t> path);
+  bool negativeCycleCheck(std::vector<bool> visited, size_t nextIdx, int level, std::vector<size_t> path);
  
   /** Process a new assertion */
   void processAssertion(TNode assertion);
@@ -108,12 +110,15 @@ class IdlExtension : protected EnvObj
   /** Context-dependent vector of variables */
   context::CDList<TNode> d_varList;
 
+  context::CDO<bool> d_singleVar;
 
   /** i,jth entry is true iff there is an edge from i to j. */
   std::vector<std::vector<bool>> d_valid;
   // Current : malloced array of CDOs
   context::CDO<validOptions>*** d_valid_cd;
   // std::vector<std::vector<context::CDO<bool>*>> d_valid_cd;
+  context::CDO<bool>** d_zeroInValid;
+  context::CDO<bool>** d_zeroOutValid;
 
   //context::CDO<bool>* test;
 
@@ -122,7 +127,9 @@ class IdlExtension : protected EnvObj
   // Current : malloced array of CDOs
   context::CDO<Rational>*** d_matrix_cd;
   // std::vector<std::vector<context::CDO<Rational>*>> d_matrix_cd;
-  
+  context::CDO<Rational>** d_zeroInEdges;
+  context::CDO<Rational>** d_zeroOutEdges;
+
   context::CDO<Rational>** dist;
 
   /** Number of variables in the graph */
@@ -134,6 +141,7 @@ class IdlExtension : protected EnvObj
 
   context::CDO<std::tuple<size_t,size_t,Rational>>* conflictStart;
   //context::CDO<std::vector<size_t>>* conflictPath;
+  //context::CDO<TNode>* d_singleDummyNode;
 
 }; /* class IdlExtension */
 

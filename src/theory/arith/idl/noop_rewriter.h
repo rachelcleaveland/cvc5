@@ -32,8 +32,7 @@ class NoopRewriter : public TheoryRewriter
   {
     
     NodeManager* nm = NodeManager::currentNM();
-    
-    if (n.getKind() == kind::UMINUS) {
+    if (n.getKind() == kind::UMINUS && n[0].getKind() == kind::CONST_RATIONAL) {
       return RewriteResponse(REWRITE_DONE, TNode(nm->mkConst(-n[0].getConst<Rational>()))); //reNode); //n);
     }
     

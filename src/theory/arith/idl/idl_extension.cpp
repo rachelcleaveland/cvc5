@@ -35,6 +35,7 @@ IdlExtension::IdlExtension(Env& env, TheoryArith& parent)
       d_parent(parent),
       d_varMap(context()),
       d_varList(context()),
+      d_singleVar(context(),false),
       d_numVars(0),
       negative_cycle(context(), false),
       conflictPath(context())
@@ -53,6 +54,14 @@ void printDist(size_t numVars, context::CDO<Rational>**  dists) {
 void IdlExtension::preRegisterTerm(TNode node)
 {
   Assert(d_numVars == 0);
+  //
+  if (d_varMap.size() == 0) {
+    unsigned size = d_varMap.size();
+    TNode nullNode;
+    d_varMap[nullNode] = size;
+    d_varList.push_back(nullNode);
+  }
+  //
   if (node.isVar())
   {
     Trace("theory::arith::idl")
@@ -62,6 +71,36 @@ void IdlExtension::preRegisterTerm(TNode node)
     d_varMap[node] = size;
     d_varList.push_back(node);
   }
+}
+
+
+void IdlExtension::allocateMatrices(size_t dimension) {
+
+  // Current : malloced array of CDOs
+  d_matrix_cd = (context::CDO<Rational>***)malloc(sizeof(context::CDO<Rational>**) * dimension);
+  d_valid_cd = (context::CDO<validOptions>***)malloc(sizeof(context::CDO<validOptions>**) * dimension);
+  dist = (context::CDO<Rational>**)malloc(sizeof(context::CDO<Rational>*) * dimension);
+  //conflictStart = new(true) context::CDO(d_env.getContext(), std::make_tuple((size_t)0,(size_t)0,Rational(0)));
+
+  for (size_t i = 0; i < dimension; ++i)
+  {
+    // Current : malloced array of pointers to CDOs
+    d_matrix_cd[i] = (context::CDO<Rational>**)malloc(sizeof(context::CDO<Rational>*) * dimension);
+    d_valid_cd[i] = (context::CDO<validOptions>**)malloc(sizeof(context::CDO<validOptions>*) * dimension);
+    dist[i] = new(true) context::CDO(d_env.getContext(), Rational(0));
+
+  for (size_t j = 0; j < dimension; ++j) 
+    {
+      // Current : malloced array of pointers to CDOs
+      d_valid_cd[i][j] = new(true) context::CDO(d_env.getContext(), INVALID);
+      d_matrix_cd[i][j] = new(true) context::CDO(d_env.getContext(), Rational(0));
+
+    }
+
+  }
+
+
+
 }
 
 void IdlExtension::presolve()
@@ -76,29 +115,8 @@ void IdlExtension::presolve()
     d_matrix.emplace_back(d_numVars);
     d_valid.emplace_back(d_numVars, false);
   }
-
-  // Current : malloced array of CDOs
-  d_matrix_cd = (context::CDO<Rational>***)malloc(sizeof(context::CDO<Rational>**) * d_numVars);
-  d_valid_cd = (context::CDO<validOptions>***)malloc(sizeof(context::CDO<validOptions>**) * d_numVars);
-  dist = (context::CDO<Rational>**)malloc(sizeof(context::CDO<Rational>*) * d_numVars);
-  conflictStart = new(true) context::CDO(d_env.getContext(), std::make_tuple((size_t)0,(size_t)0,Rational(0)));
-
-  for (size_t i = 0; i < d_numVars; ++i)
-  {
-    // Current : malloced array of pointers to CDOs
-    d_matrix_cd[i] = (context::CDO<Rational>**)malloc(sizeof(context::CDO<Rational>*) * d_numVars);
-    d_valid_cd[i] = (context::CDO<validOptions>**)malloc(sizeof(context::CDO<validOptions>*) * d_numVars);
-    dist[i] = new(true) context::CDO(d_env.getContext(), Rational(0));
-
-  for (size_t j = 0; j < d_numVars; ++j) 
-    {
-      // Current : malloced array of pointers to CDOs
-      d_valid_cd[i][j] = new(true) context::CDO(d_env.getContext(), INVALID);
-      d_matrix_cd[i][j] = new(true) context::CDO(d_env.getContext(), Rational(0));
-
-    }
-
-  }
+  
+  allocateMatrices(d_numVars);
 
 }
 
@@ -108,16 +126,128 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
       << "IdlExtension::ppRewrite(): processing " << atom << std::endl;
   NodeManager* nm = NodeManager::currentNM();
 
+  if (  atom.getKind() == kind::EQUAL 
+     || atom.getKind() == kind::LT
+     || atom.getKind() == kind::LEQ
+     || atom.getKind() == kind::GT
+     || atom.getKind() == kind::GEQ) 
+  {
+     
+    if (atom[0].getKind() == kind::CONST_RATIONAL) { 
+      // Handle (op c (- x y)) cases ==> swap atoms, flip op
+
+      kind::Kind_t atomKind = kind::EQUAL;
+    
+      switch (atom.getKind())
+      {
+        case kind::EQUAL: { atomKind = kind::EQUAL; break; }
+        case kind::LT: { atomKind = kind::GT; break; }
+        case kind::LEQ: { atomKind = kind::GEQ; break; }
+        case kind::GT: { atomKind = kind::LT; break; }
+        case kind::GEQ: { atomKind = kind::LEQ; break; }
+        default: break;
+      }
+
+      return ppRewrite(nm->mkNode(atomKind, atom[1], atom[0]),lems);
+    }
+
+    if (atom[1].getKind() == kind::CONST_RATIONAL && atom[0].getKind() == kind::PLUS) {
+      Assert(atom[0][1].getKind() == kind::CONST_RATIONAL);
+
+      Rational rightL = atom[0][1].getConst<Rational>();
+      Rational rightR = atom[1].getConst<Rational>();
+
+      return ppRewrite(nm->mkNode(atom.getKind(), atom[0][0], nm->mkConst(rightR - rightL)),lems);
+      
+    }
+
+    if (atom[1].getKind() == kind::VARIABLE) { 
+      // Handle (op x y) case ==> (op (- x y) 0)
+      if (atom[0].getKind() == kind::VARIABLE) {
+        return ppRewrite(nm->mkNode(atom.getKind(), nm->mkNode(kind::MINUS,atom[0],atom[1]),nm->mkConst(Rational(0))),lems);
+      }
+      // Handle (op (+ x c) y) ==> (op (- x y) -c)
+      // Handle (op (- x c) y) ==> (op (- x y) c)
+      Assert(atom[0].getKind() == kind::PLUS || atom[0].getKind() == kind::MINUS); // Handle (op (+ x c) y) case ==> (op (- x y) -c)
+      Assert(atom[0][0].getKind() == kind::VARIABLE);
+      Assert(atom[0][1].getKind() == kind::CONST_RATIONAL); 
+
+      Rational right = atom[0][1].getConst<Rational>();
+      if (atom[0].getKind() == kind::PLUS) {
+	right = -right;
+      }
+      return ppRewrite(nm->mkNode(atom.getKind(), nm->mkNode(kind::MINUS, atom[0][0], atom[1]), nm->mkConst(right)),lems);
+    }
+
+    if (atom[1].getKind() == kind::PLUS || atom[1].getKind() == kind::MINUS) { 
+      if (atom[0].getKind() == kind::VARIABLE) { 
+	// Handle (op x (+ y c)) ==> (op (- x y) c)
+	// Handle (op x (- y c)) ==> (op (- x y) -c)
+	Rational right = atom[1][1].getConst<Rational>();
+	if (atom[1].getKind() == kind::MINUS) {
+	  right = -right;
+	}
+	return ppRewrite(nm->mkNode(atom.getKind(), nm->mkNode(kind::MINUS, atom[0], atom[1][0]), nm->mkConst(right)),lems);
+      }
+      Assert(atom[0].getKind() == kind::PLUS || atom[0].getKind() == kind::MINUS);
+      Assert(atom[0][0].getKind() == kind::VARIABLE);
+      Assert(atom[0][1].getKind() == kind::CONST_RATIONAL); 
+      // Handle (op (+ x c) (+ y c2)) ==> (op (- x y) (-   c2    c   ))
+      // Handle (op (+ x c) (- y c2)) ==> (op (- x y) (- (-c2)   c   ))
+      // Handle (op (- x c) (+ y c2)) ==> (op (- x y) (-   c2  (-c)  ))
+      // Handle (op (- x c) (- y c2)) ==> (op (- x y) (- (-c2) (-c)  ))
+      
+      Rational rightL = atom[0][1].getConst<Rational>();
+      if (atom[0].getKind() == kind::MINUS) {
+	rightL = -rightL;
+      }
+      Rational rightR = atom[1][1].getConst<Rational>();
+      if (atom[1].getKind() == kind::MINUS) {
+	rightR = -rightR;
+      }
+
+      return ppRewrite(nm->mkNode(atom.getKind(), nm->mkNode(kind::MINUS, atom[0][0], atom[1][0]), nm->mkConst(rightR-rightL)),lems);
+
+    }
+/*
+    if ((atom[0].getKind() == kind::PLUS || atom[0].getKind() == kind::MINUS) && atom[0][1].getKind() == kind::CONST_RATIONAL) { // Handle (op (+ x c) c2) ==> (op x (- c2 c))
+      Assert(atom[1].getKind() == kind::CONST_RATIONAL);
+      
+      Rational rightL = atom[0][1].getConst<Rational>();
+      if (atom[0].getKind() == kind::MINUS) {
+	rightL = -rightL;
+      }
+      Rational rightR = atom[1].getConst<Rational>();
+
+      return ppRewrite(nm->mkNode(atom.getKind(), atom[0][0], nm->mkConst(rightR - rightL)),lems);
+
+    }
+*/
+  }
+
+
   switch (atom.getKind())
   {
     case kind::EQUAL:
     {
+      //if (atom[0].getKind() == kind::CONST_RATIONAL) {
+	//return ppRewrite(nm->mkNode(kind::EQUAL, atom[1], atom[0]), lems);
+      //}
+      //std::cout << "in equals case " << std::endl;
       Node l_le_r = nm->mkNode(kind::LEQ, atom[0], atom[1]);
-      Assert(atom[0].getKind() == kind::MINUS);
-      Node negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      Node negated_left;
+      if (atom[0].getKind() == kind::VARIABLE) {
+        negated_left = nm->mkNode(kind::UMINUS, atom[0]);
+      } else {
+        Assert(atom[0].getKind() == kind::MINUS);
+        negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      }
+      //std::cout << "atom[1] " << atom[1] << std::endl;
       const Rational& right = atom[1].getConst<Rational>();
+      //std::cout << "returned from right " << std::endl;
       Node negated_right = nm->mkConst(-right);
       Node r_le_l = nm->mkNode(kind::LEQ, negated_left, negated_right);
+      //std::cout << "returned from equals case " << std::endl;
       return nm->mkNode(kind::AND, l_le_r, r_le_l);
     }
 
@@ -126,27 +256,38 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
     // -------------------------------------------------------------------------
     case kind::LT:
     {
-      Assert(atom[0].getKind() == kind::MINUS);
       const Rational& right = atom[1].getConst<Rational>();
       Node new_right = nm->mkConst(right - 1);
       return nm->mkNode(kind::LEQ, atom[0], new_right);
     }
     case kind::LEQ:
     {
-      Assert(atom[0].getKind() == kind::MINUS);
       return atom;
     }
     case kind::GT:
     {
-      Assert(atom[0].getKind() == kind::MINUS);
-      Node negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      Node negated_left;
+      if (atom[0].getKind() == kind::VARIABLE) {
+        negated_left = nm->mkNode(kind::UMINUS, atom[0]);
+      } else {
+        Assert(atom[0].getKind() == kind::MINUS);
+        negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      }
+
       const Rational& right = atom[1].getConst<Rational>();
       Node negated_right = nm->mkConst(-right - 1);
       return nm->mkNode(kind::LEQ, negated_left, negated_right);
     }
     case kind::GEQ:
-    {
-      Node negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+    {  
+      Node negated_left;
+      if (atom[0].getKind() == kind::VARIABLE) {
+        negated_left = nm->mkNode(kind::UMINUS, atom[0]);
+      } else {
+        Assert(atom[0].getKind() == kind::MINUS);
+        negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
+      }
+
       const Rational& right = atom[1].getConst<Rational>();
       Node negated_right = nm->mkConst(-right);
       return nm->mkNode(kind::LEQ, negated_left, negated_right);
@@ -188,7 +329,20 @@ Node IdlExtension::constructConflict() {
   NodeBuilder conjunction(kind::AND);
 
   Node constW = nm->mkConst(w);
-  Node initialConflict = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[firstNodeCon], d_varList[secondNodeCon]), constW); //nm->mkConst(w));
+
+  Node initialConflict;
+
+  if (firstNodeCon == 0) {
+    Assert(secondNodeCon != 0);
+    initialConflict = nm->mkNode(kind::LEQ, nm->mkNode(kind::UMINUS, d_varList[secondNodeCon]), constW); 
+  } else {
+    if (secondNodeCon == 0) {
+      initialConflict = nm->mkNode(kind::LEQ, d_varList[firstNodeCon], constW); 
+    } else {
+      initialConflict = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[firstNodeCon], d_varList[secondNodeCon]), constW); 
+    }
+  }
+  //Node initialConflict = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[firstNodeCon], d_varList[secondNodeCon]), constW); //nm->mkConst(w));
 
   if (!polarity) {
     initialConflict = nm->mkNode(kind::NOT, initialConflict);
@@ -199,6 +353,7 @@ Node IdlExtension::constructConflict() {
   for (size_t k = 0; k < conflictPath.size() - 1; k++) {
     size_t prevIdx = conflictPath[k];
     size_t currIdx = conflictPath[k+1];
+
     Rational weight = d_matrix_cd[prevIdx][currIdx]->get();
 
     polarity = d_valid_cd[prevIdx][currIdx]->get() == POSITIVE;
@@ -209,8 +364,20 @@ Node IdlExtension::constructConflict() {
     }
 
     Node constWeight = nm->mkConst(weight);
+    Node exprExt;
 
-    Node exprExt = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[prevIdx], d_varList[currIdx]), constWeight); //nm->mkConst(weight)); 
+    if (prevIdx == 0) {
+      Assert(currIdx != 0);
+      exprExt = nm->mkNode(kind::LEQ, nm->mkNode(kind::UMINUS, d_varList[currIdx]), constWeight);
+    } else {
+      if (currIdx == 0) {
+        exprExt = nm->mkNode(kind::LEQ, d_varList[prevIdx], constWeight); 
+      } else {
+        exprExt = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[prevIdx], d_varList[currIdx]), constWeight); 
+      }
+    }
+
+    //Node exprExt = nm->mkNode(kind::LEQ, nm->mkNode(kind::MINUS, d_varList[prevIdx], d_varList[currIdx]), constWeight); //nm->mkConst(weight)); 
     
     if (!polarity) {
       exprExt = nm->mkNode(kind::NOT, exprExt);
@@ -218,7 +385,14 @@ Node IdlExtension::constructConflict() {
 
     conjunction << exprExt;
   }
-  Node conflict = conjunction;
+
+  
+  Node conflict; 
+  if (conflictPath.size() == 1) {
+    conflict = initialConflict;
+  } else {
+    conflict = conjunction;
+  }
 
   return conflict;
 }
@@ -264,7 +438,7 @@ bool IdlExtension::collectModelInfo(TheoryModel* m,
   }
 
   NodeManager* nm = NodeManager::currentNM();
-  for (size_t i = 0; i < d_numVars; i++)
+  for (size_t i = 1; i < d_numVars; i++)
   {
     // Assert that the variable's value is equal to its distance in the model
     m->assertEquality(d_varList[i], nm->mkConst(distance[i]), true);
@@ -288,8 +462,8 @@ bool IdlExtension::negativeCycleCheck(std::vector<bool> visited, size_t nextIdx,
 	}
       }
 
-      size_t i = path[path.size()-1];
-      conflictStart->set(std::make_tuple(i,nextIdx,d_matrix_cd[i][nextIdx]->get()));
+      //size_t i = path[path.size()-1];
+      //conflictStart->set(std::make_tuple(i,nextIdx,d_matrix_cd[i][nextIdx]->get()));
     }
     return true;
 
@@ -321,27 +495,53 @@ bool IdlExtension::negativeCycleCheck(std::vector<bool> visited, size_t nextIdx,
 
 void IdlExtension::processAssertion(TNode assertion)
 {
+  //std::cout << "processAssertion ************" << assertion << std::endl;
   bool polarity = assertion.getKind() != kind::NOT;
   TNode atom = polarity ? assertion : assertion[0];
-  Assert(atom.getKind() == kind::LEQ);
-  Assert(atom[0].getKind() == kind::MINUS);
-  TNode var1 = atom[0][0];
-  TNode var2 = atom[0][1];
 
+  Assert(atom.getKind() == kind::LEQ);
+  
+  size_t index1;
+  size_t index2;
+
+  if (atom[0].getKind() == kind::VARIABLE) {
+    
+    TNode var1 = atom[0];
+    
+    index1 = d_varMap[var1];
+    index2 = 0;
+
+  } else if (atom[0].getKind() == kind::UMINUS && atom[0][0].getKind() == kind::VARIABLE) {
+    TNode var2 = atom[0][0];
+
+    index1 = 0;
+    index2 = d_varMap[var2];
+
+  } else {
+
+    Assert(atom[0].getKind() == kind::MINUS);
+
+    TNode var1 = atom[0][0];
+    TNode var2 = atom[0][1];
+
+    index1 = d_varMap[var1];
+    index2 = d_varMap[var2];
+
+  }
+  
   Rational value = (atom[1].getKind() == kind::UMINUS)
                        ? -atom[1][0].getConst<Rational>()
                        : atom[1].getConst<Rational>();
 
   validOptions validity = POSITIVE;
+  
   if (!polarity)
   {
-    std::swap(var1, var2);
+    std::swap(index1,index2);
     value = -value - Rational(1);
     validity = NEGATIVE;
   }
 
-  size_t index1 = d_varMap[var1];
-  size_t index2 = d_varMap[var2];
 
   // Malloced array of CDOs 
   if ((d_valid_cd[index1][index2])->get()) {
@@ -428,7 +628,7 @@ IdlExtension::~IdlExtension() {
   free(d_matrix_cd);
   free(d_valid_cd);
   free(dist);
-  conflictStart->deleteSelf();
+  //conflictStart->deleteSelf();
 }
 
 }  // namespace idl
