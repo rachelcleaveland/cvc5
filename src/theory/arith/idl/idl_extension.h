@@ -45,6 +45,7 @@ class IdlExtension : protected EnvObj
   void preRegisterTerm(TNode);
 
   void allocateMatrices(size_t dimension);
+  void allocateEdgeWeights(size_t dimension);
 
   /** Set up the solving data structures */
   void presolve();
@@ -77,14 +78,14 @@ class IdlExtension : protected EnvObj
   bool collectModelInfo(TheoryModel* m, const std::set<Node>& termSet);
 
  private:
-   enum validOptions : char 
+ 
+  enum assertionOptions : char
   {
-    INVALID = 0,
-    POSITIVE = 1,
-    NEGATIVE = 2
+    PLUS = 0,
+    MINUS = 1
   };
 
-  bool negativeCycleCheck(std::vector<bool> visited, size_t nextIdx, int level, std::vector<size_t> path);
+  bool negativeCycleCheck(std::vector<bool> visited, size_t nextIdx, int level, std::vector<size_t> *path);
  
   /** Process a new assertion */
   void processAssertion(TNode assertion);
@@ -96,9 +97,10 @@ class IdlExtension : protected EnvObj
   bool negativeCycle();
 
   /** Print the matrix */
-  void printMatrix_cd(context::CDO<Rational>*** matrix,
+  /*void printMatrix_cd(context::CDO<Rational>*** matrix,
                       context::CDO<validOptions>*** valid);
-  
+  */
+
   typedef context::CDHashMap<TNode, size_t> TNodeToUnsignedCDMap;
 
   /** The owner of this extension */
@@ -110,38 +112,22 @@ class IdlExtension : protected EnvObj
   /** Context-dependent vector of variables */
   context::CDList<TNode> d_varList;
 
-  context::CDO<bool> d_singleVar;
-
-  /** i,jth entry is true iff there is an edge from i to j. */
-  std::vector<std::vector<bool>> d_valid;
-  // Current : malloced array of CDOs
-  context::CDO<validOptions>*** d_valid_cd;
-  // std::vector<std::vector<context::CDO<bool>*>> d_valid_cd;
-  context::CDO<bool>** d_zeroInValid;
-  context::CDO<bool>** d_zeroOutValid;
-
-  //context::CDO<bool>* test;
-
-  /** i,jth entry stores weight for edge from i to j. */
-  std::vector<std::vector<Rational>> d_matrix;
-  // Current : malloced array of CDOs
-  context::CDO<Rational>*** d_matrix_cd;
-  // std::vector<std::vector<context::CDO<Rational>*>> d_matrix_cd;
-  context::CDO<Rational>** d_zeroInEdges;
-  context::CDO<Rational>** d_zeroOutEdges;
-
+  /* Array of CDOs representing Bellman-Ford distance to each vertex */
   context::CDO<Rational>** dist;
 
   /** Number of variables in the graph */
   size_t d_numVars;
 
-  inline TNode get();
   context::CDO<bool> negative_cycle;
+  
+  /* List of node indicies in negative cycle */
   context::CDList<size_t> conflictPath;
 
-  context::CDO<std::tuple<size_t,size_t,Rational>>* conflictStart;
-  //context::CDO<std::vector<size_t>>* conflictPath;
-  //context::CDO<TNode>* d_singleDummyNode;
+  /* 
+   * Adjacency matrix: edge list representation 
+   *   each vertex has a hash map containing its outgoing edges 
+   */
+  context::CDHashMap<size_t,std::tuple<assertionOptions,Rational>>** edgeWeights; 
 
 }; /* class IdlExtension */
 
