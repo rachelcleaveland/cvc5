@@ -224,11 +224,8 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
   {
     case kind::EQUAL:
     {
-      //if (atom[0].getKind() == kind::CONST_RATIONAL) {
-	//return ppRewrite(nm->mkNode(kind::EQUAL, atom[1], atom[0]), lems);
-      //}
-      //std::cout << "in equals case " << std::endl;
       Node l_le_r = nm->mkNode(kind::LEQ, atom[0], atom[1]);
+      /*
       Node negated_left;
       if (atom[0].getKind() == kind::VARIABLE) {
         negated_left = nm->mkNode(kind::UMINUS, atom[0]);
@@ -236,13 +233,13 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
         Assert(atom[0].getKind() == kind::MINUS);
         negated_left = nm->mkNode(kind::MINUS, atom[0][1], atom[0][0]);
       }
-      //std::cout << "atom[1] " << atom[1] << std::endl;
       const Rational& right = atom[1].getConst<Rational>();
-      //std::cout << "returned from right " << std::endl;
       Node negated_right = nm->mkConst(-right);
       Node r_le_l = nm->mkNode(kind::LEQ, negated_left, negated_right);
-      //std::cout << "returned from equals case " << std::endl;
       return nm->mkNode(kind::AND, l_le_r, r_le_l);
+      */
+      Node n_l_lt_r = nm->mkNode(kind::NOT, ppRewrite(nm->mkNode(kind::LT, atom[0], atom[1]),lems));
+      return nm->mkNode(kind::AND, l_le_r, n_l_lt_r);
     }
 
     // -------------------------------------------------------------------------
@@ -260,6 +257,7 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
     }
     case kind::GT:
     {
+      /* 
       Node negated_left;
       if (atom[0].getKind() == kind::VARIABLE) {
         negated_left = nm->mkNode(kind::UMINUS, atom[0]);
@@ -271,9 +269,12 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
       const Rational& right = atom[1].getConst<Rational>();
       Node negated_right = nm->mkConst(-right - 1);
       return nm->mkNode(kind::LEQ, negated_left, negated_right);
+      */
+      return nm->mkNode(kind::NOT, ppRewrite(nm->mkNode(kind::LEQ, atom[0], atom[1]), lems));
     }
     case kind::GEQ:
-    {  
+    {
+      /*
       Node negated_left;
       if (atom[0].getKind() == kind::VARIABLE) {
         negated_left = nm->mkNode(kind::UMINUS, atom[0]);
@@ -285,6 +286,8 @@ Node IdlExtension::ppRewrite(TNode atom, std::vector<SkolemLemma>& lems)
       const Rational& right = atom[1].getConst<Rational>();
       Node negated_right = nm->mkConst(-right);
       return nm->mkNode(kind::LEQ, negated_left, negated_right);
+      */ 
+      return nm->mkNode(kind::NOT, ppRewrite(nm->mkNode(kind::LT, atom[0], atom[1]), lems));
     }
       // -------------------------------------------------------------------------
 
