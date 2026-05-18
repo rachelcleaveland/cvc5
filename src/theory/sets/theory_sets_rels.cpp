@@ -219,6 +219,8 @@ void TheorySetsRels::check()
       }
       else if (k_t_it->first == Kind::RELATION_TCLOSURE)
       {
+        // JoinToTClos
+
         while (term_it != k_t_it->second.end())
         {
           buildTCGraphForRel(*term_it);
@@ -245,6 +247,9 @@ void TheorySetsRels::check()
     }
     ++t_it;
   }
+
+  // nested loops
+
   doTCInference();
 
   // clean up
@@ -258,6 +263,7 @@ void TheorySetsRels::check()
   d_tcr_tcGraph_exps.clear();
   d_tcr_tcGraph.clear();
   d_acyclic_cache.clear();
+  d_joinTransClosure.clear();
 }
 
 /*
@@ -313,6 +319,7 @@ void TheorySetsRels::collectRelsInfo()
             }
           }
         }
+        // collect relational terms info
         // collect acyclic info
         else if (eqc_node.getKind() == Kind::RELATION_ACYCLIC)
         {
@@ -320,7 +327,70 @@ void TheorySetsRels::collectRelsInfo()
 
           d_acyclic_cache[rel_rep] = is_true_eq;
         }
-        // collect relational terms info
+        // collect info for applyJoinToTClosRule
+        else if (eqc_node.getKind() == Kind::EQUAL)
+        {
+          if (!is_true_eq) continue;
+
+          // Pattern match for (R ; R) U R = R
+          for (size_t side = 0; side < 2; side++)
+          {
+            Node lhs0 = eqc_node[side];
+            Node rhs0 = eqc_node[1 - side];
+
+            if (lhs0.getKind() == Kind::SET_UNION)
+            {
+              for (size_t side1 = 0; side1 < 2; side1++)
+              {
+                Node lhs1 = lhs0[side1];
+                Node rhs1 = lhs0[1 - side1];
+
+                if (lhs1.getKind() == Kind::RELATION_JOIN)
+                {
+                  Trace("rels-debug") << lhs1[0] << " " << lhs1[1] << " "
+                                      << rhs0 << " " << rhs1 << std::endl;
+                  Node r0 = getRepresentative(lhs1[0]);
+                  Node r1 = getRepresentative(lhs1[1]);
+                  Node r2 = getRepresentative(rhs1);
+                  Node r3 = getRepresentative(rhs0);
+
+                  if (r0 == r1 && r1 == r2 && r2 == r3)
+                  {
+                    // applyJoinToTClosRule(eqc_node,r0);
+                    // Add r0 |-> exp to d_joinTransClosure
+                    Node rRep = r0;
+
+                    Trace("rels-debug") << "R's: " << r0 << " " << r1 << " "
+                                        << r2 << " " << r3 << std::endl;
+
+                    if (d_joinTransClosure.find(rRep)
+                        != d_joinTransClosure.end())
+                    {
+                      continue;
+                    }
+
+                    Node Rrep = lhs1[0];
+                    std::vector<Node> reasons;
+                    reasons.push_back(eqc_node);
+                    if (lhs1[1] != Rrep)
+                      reasons.push_back(Rrep.eqNode(lhs1[1]));
+                    if (rhs1 != Rrep) reasons.push_back(Rrep.eqNode(rhs1));
+                    if (rhs0 != Rrep) reasons.push_back(Rrep.eqNode(rhs0));
+
+                    Node exp = reasons.size() == 1
+                                   ? reasons[0]
+                                   : nodeManager()->mkNode(Kind::AND, reasons);
+
+                    d_joinTransClosure[rRep] = exp;
+
+                    Trace("rels-debug")
+                        << "New explanation" << exp << std::endl;
+                  }
+                }
+              }
+            }
+          }
+        }
       }
       else if (erType.isSet() && erType.getSetElementType().isTuple())
       {

@@ -129,6 +129,10 @@ class TheorySetsRels : protected EnvObj
   /** Mapping from acyclic relation representatives to their truth value */
   std::map<Node, bool> d_acyclic_cache;
 
+  /** Relations R for which the user has asserted (R ; R) U R = R.
+   *  Maps R's representative to the explanation. */
+  std::map<Node, Node> d_joinTransClosure;
+
   /** Mapping between transitive closure relation TC(r) and its TC graph
    * constructed based on the members of r*/
   std::map<Node, std::map<Node, std::unordered_set<Node> > > d_rRep_tcGraph;
