@@ -16,6 +16,7 @@
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
 #include "expr/elim_shadow_converter.h"
+#include "expr/sequence.h"
 #include "options/sets_options.h"
 #include "theory/bags/bags_utils.h"
 #include "theory/datatypes/tuple_utils.h"
@@ -423,6 +424,7 @@ RewriteResponse TheorySetsRewriter::postRewrite(TNode node)
     case Kind::SET_SOME: return postRewriteSome(node);
     case Kind::SET_FOLD: return postRewriteFold(node);
     case Kind::RELATION_ACYCLIC: return postRewriteAcyclic(node);
+    case Kind::RELATION_MINIMAL: return postRewriteMinimal(node);
     case Kind::RELATION_RCLOSURE: return postRewriteRClosure(node);
     case Kind::RELATION_RTCLOSURE: return postRewriteRTClosure(node);
     case Kind::RELATION_TABLE_JOIN:
@@ -941,6 +943,55 @@ RewriteResponse TheorySetsRewriter::postRewriteAcyclic(TNode n)
 
     default: break;
   }
+  return RewriteResponse(REWRITE_DONE, n);
+}
+
+RewriteResponse TheorySetsRewriter::postRewriteMinimal(TNode n)
+{
+  Assert(n.getKind() == Kind::RELATION_MINIMAL);
+  NodeManager* nm = nodeManager();
+  Node s = n[1];
+
+  // Rewrites based on the cycle sequence s alone (sound necessary conditions
+  // for s to be a cycle). When s is a constant sequence that either is too
+  // short to contain an edge (len < 2) or does not close (s[0] != s[len-1]),
+  // n is false regardless of the relation.
+  if (s.isConst())
+  {
+    const std::vector<Node>& seq = s.getConst<Sequence>().getVec();
+    if (seq.size() < 2 || seq.front() != seq.back())
+    {
+      return RewriteResponse(REWRITE_DONE, nm->mkConst(false));
+    }
+  }
+
+  Kind k = n[0].getKind();
+  switch (k)
+  {
+    case Kind::SET_EMPTY:
+    {
+      // (rel.minimal (as set.empty (Relation T T)) s) = false
+      Node ret = nm->mkConst(false);
+      return RewriteResponse(REWRITE_DONE, ret);
+    }
+    case Kind::SET_SINGLETON:
+    {
+      // (rel.minimal (set.singleton (tuple x y)) s) =
+      //   (and (= x y) (= s (seq.++ (seq.unit x) (seq.unit x))))
+      Node x = TupleUtils::nthElementOfTuple(n[0][0], 0);
+      Node y = TupleUtils::nthElementOfTuple(n[0][0], 1);
+      Node unitX = nm->mkNode(Kind::SEQ_UNIT, x);
+      Node seqXX = nm->mkNode(Kind::STRING_CONCAT, unitX, unitX);  // seq.++ uses STRING_CONCAT
+      Node ret = nm->mkNode(Kind::AND,
+                            nm->mkNode(Kind::EQUAL, x, y),
+                            nm->mkNode(Kind::EQUAL, s, seqXX));
+      return RewriteResponse(REWRITE_AGAIN_FULL, ret);
+    }
+
+    default: break;
+  }
+
+  // TODO: need to implement the last case: evaluate the whole thing / check for tclosure membership and minimality
   return RewriteResponse(REWRITE_DONE, n);
 }
 

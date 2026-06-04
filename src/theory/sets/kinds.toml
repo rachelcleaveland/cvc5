@@ -319,6 +319,13 @@ typerule = "::cvc5::internal::theory::sets::RelAcyclicTypeRule"
 
 [[kinds]]
 type     = "operator"
+name     = "RELATION_MINIMAL"
+children = 2
+comment  = "relation minimal"
+typerule = "::cvc5::internal::theory::sets::RelMinimalTypeRule"
+
+[[kinds]]
+type     = "operator"
 name     = "RELATION_JOIN_IMAGE"
 children = 2
 comment  = "relation join image"

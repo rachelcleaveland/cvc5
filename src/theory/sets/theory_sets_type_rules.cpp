@@ -1113,6 +1113,69 @@ TypeNode RelAcyclicTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->booleanType();
 }
 
+TypeNode RelMinimalTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                            CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+TypeNode RelMinimalTypeRule::computeType(NodeManager* nodeManager,
+                                        TNode n,
+                                        bool check,
+                                        std::ostream* errOut)
+{
+  Assert(n.getKind() == Kind::RELATION_MINIMAL);
+
+  TypeNode firstRelType = n[0].getTypeOrNull();
+
+  if (!isMaybeRelation(firstRelType))
+  {
+    if (errOut)
+    {
+      (*errOut) << "Minimal operator operates on non-relations";
+    }
+    return TypeNode::null();
+  }
+  if (!firstRelType.isRelation())
+  {
+    // abstract relation if the argument is not concreate
+    return nodeManager->mkSetType(
+        nodeManager->mkAbstractType(Kind::TUPLE_TYPE));
+  }
+  std::vector<TypeNode> tupleTypes = firstRelType[0].getTupleTypes();
+  if (check)
+  {
+    if (tupleTypes.size() != 2)
+    {
+      if (errOut)
+      {
+        (*errOut) << "Minimal operates on a non-binary relation";
+      }
+      return TypeNode::null();
+    }
+    if (!tupleTypes[0].isComparableTo(tupleTypes[1]))
+    {
+      if (errOut)
+      {
+        (*errOut) << "Minimal operates on a pair of different types";
+      }
+      return TypeNode::null();
+    }
+    TypeNode valType = n[1].getTypeOrNull();
+    if (!valType.isFullyAbstract()
+        && (!valType.isSequence()
+            || !valType.getSequenceElementType().isComparableTo(tupleTypes[0])))
+    {
+      if (errOut)
+      {
+        (*errOut) << "Minimal's second argument must be a sequence of the "
+                     "relation's element type";
+      }
+      return TypeNode::null();
+    }
+  }
+  return nodeManager->booleanType();
+}
+
 TypeNode JoinImageTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
                                            CVC5_UNUSED TNode n)
 {

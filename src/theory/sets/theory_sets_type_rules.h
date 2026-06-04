@@ -356,6 +356,21 @@ struct RelAcyclicTypeRule
 };
 
 /**
+ * Type rule for unary operator (rel.minimal A S) to check that A is a binary
+ * relation of type (Relation T T), where T is a type, and S is a sequence of
+ * type (Sequence T). The return type will be boolean.
+ */
+struct RelMinimalTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+/**
  * Type rule for operator (rel.join_image A c) that checks A is a binary
  * relation of type (Relation T T), where T is a type, and c is an integer
  * term (in fact c should be a non-negative constant, otherwise a logic

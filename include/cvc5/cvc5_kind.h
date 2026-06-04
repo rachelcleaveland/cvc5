@@ -3958,6 +3958,24 @@ enum ENUM(Kind)
    */
   EVALUE(RELATION_ACYCLIC),
   /**
+   * Relation minimal predicate.
+   *
+   * - Arity: ``2``
+   *
+   *   - ``1:`` Term of relation Sort
+   *   - ``2:`` Term of sequence Sort
+   *
+   * - Create Term of this Kind with:
+   *
+   *   - TermManager::mkTerm(Kind, const std::vector<Term>&)
+   *   - TermManager::mkTerm(const Op&, const std::vector<Term>&)
+   *
+   * - Create Op of this kind with:
+   *
+   *   - TermManager::mkOp(Kind, const std::vector<uint32_t>&)
+   */
+  EVALUE(RELATION_MINIMAL),
+  /**
    * Relation join image.
    *
    * - Arity: ``2``

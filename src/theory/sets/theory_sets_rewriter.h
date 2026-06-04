@@ -113,6 +113,31 @@ class TheorySetsRewriter : public TheoryRewriter
    *    If A or B are not const, return the original node.
    */
   RewriteResponse postRewriteAcyclic(TNode n);
+    /**
+     *  (rel.minimal R s) holds iff s is a minimal cycle of elements in R:
+     *  s[0] = s[len-1] and for each i, (s[i], s[i+1]) is in (rel.tclosure R).
+     * TODO: we should also check that s is in fact minimal, i.e., there is 
+     * no possible shorter sequence satisfying our definition
+     *
+     *  rewrites for n include:
+     *  - (rel.minimal (as set.empty (Relation T T)) s) = false
+     *      (an empty relation has no edges, hence no cycle)
+     *  - (rel.minimal (set.singleton (tuple x y)) s) =
+     *      (and (= x y) (= s (seq.++ (seq.unit x) (seq.unit x))))
+     *      (the only cycle of a single edge is the self-loop [x,x] when x = y)
+     *  - (rel.minimal R s) = false when s is a constant and (seq.len s) < 2
+     *      (a cycle needs at least one edge; the minimal cycle [x,x] has length 2)
+     *  - (rel.minimal R s) = false when s is a constant and
+     *      (distinct (seq.nth s 0) (seq.nth s (- (seq.len s) 1)))
+     *      (a sequence that does not close cannot be a cycle)
+     *  - when R and s are both constant, evaluate directly: compute
+     *      (rel.tclosure R), return false if s does not close or some
+     *      (s[i], s[i+1]) is not in the closure, otherwise check minimality
+     *      (no repeated interior element) to return true/false.
+     *  Otherwise, return the original node.
+     */
+
+  RewriteResponse postRewriteMinimal(TNode n);
   /**
    *  rewrites for n include:
    *  - (rel.rclosure (as set.empty (Relation T T))) = (as set.empty (Relation T
