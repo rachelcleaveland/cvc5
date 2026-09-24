@@ -3958,6 +3958,38 @@ enum ENUM(Kind)
    */
   EVALUE(RELATION_ACYCLIC),
   /**
+   * Relation acyclic pattern predicate.
+   *
+   * \rst
+   * An acyclic pattern is specified by a variable list :math:`t_1 ... t_l`
+   * (:math:`l \geq 1`), a tuple of binary relations :math:`R_1, ..., R_k`
+   * that all share a common domain Sort T matching :math:`t_1 ... t_l`'s
+   * Sort, and a Boolean term :math:`P[t_1...t_l]`. It holds iff there is no
+   * closed walk :math:`w_1,...,w_l` over :math:`R_1 \cup ... \cup R_k`
+   * (i.e. :math:`(w_1,w_2) \in R_1 \cup ... \cup R_k`, ...,
+   * :math:`(w_l,w_1) \in R_1 \cup ... \cup R_k`) with :math:`w_1,...,w_l`
+   * pairwise distinct that satisfies :math:`P[t_1:=w_1,...,t_l:=w_l]`. The
+   * variable list's length fixes the pattern length :math:`l`.
+   * \endrst
+   *
+   * - Arity: ``3``
+   *
+   *   - ``1:`` Term of Kind :cpp:enumerator:`VARIABLE_LIST`
+   *   - ``2:`` Term of tuple Sort whose elements are binary relation Sorts
+   *     of type ``(Relation T T)`` for the variable list's Sort T
+   *   - ``3:`` Term of Sort Bool (the pattern's body)
+   *
+   * - Create Term of this Kind with:
+   *
+   *   - TermManager::mkTerm(Kind, const std::vector<Term>&)
+   *   - TermManager::mkTerm(const Op&, const std::vector<Term>&)
+   *
+   * - Create Op of this kind with:
+   *
+   *   - TermManager::mkOp(Kind, const std::vector<uint32_t>&)
+   */
+  EVALUE(RELATION_ACYCLIC_PATTERN),
+  /**
    * Relation join image.
    *
    * - Arity: ``2``

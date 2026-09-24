@@ -61,6 +61,11 @@ class SkolemCache
     // not acyclic(R1,...,Rm) => exists k. exists s1,...,sk. forall i in [1,k).
     //                           (si, s(i+1)) in R1 V ... V (si, s(i+1)) in Rm
     SK_CYCLE_LEN,
+    // not acyclic-pattern(t1...tl, (R1,...,Rm), p) =>
+    //    exists w1,...,wl. distinct(w1,...,wl)
+    //    ^ forall i in [1,l). ((wi, w{i+1}) in R1 V ... V (wi, w{i+1}) in Rm)
+    //    ^ p[w1/t1,...,wl/tl]
+    SK_CYCLE_PATTERN_ELEM,
   };
 
   /**

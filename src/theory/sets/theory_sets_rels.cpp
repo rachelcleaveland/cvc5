@@ -57,8 +57,9 @@ TheorySetsRels::TheorySetsRels(Env& env,
       // NEW CODE: context() = SAT search context, so entries roll back on every
       // decision/backtrack (unlike userContext() used for d_shared_terms
       // above).
-      d_cycle_sequences(context())
+      d_cycle_sequences(context()),
 // ===== END TEMP CHANGE =====
+      d_acyclic_pattern_instantiated(context())
 {
   d_trueNode = nodeManager()->mkConst(true);
   d_falseNode = nodeManager()->mkConst(false);
@@ -268,6 +269,7 @@ void TheorySetsRels::clearCaches()
   d_tcr_tcGraph_exps.clear();
   d_tcr_tcGraph.clear();
   d_acyclic_cache.clear();
+  d_acyclic_pattern_cache.clear();
 
   // d_cycle_sequences.clear();
 }
@@ -279,6 +281,7 @@ void TheorySetsRels::checkAcyclicity()
       << std::endl;
   collectRelsInfo();
   doCycleInference();
+  checkAcyclicPatternDown();
   // don't flush; see the comment in TheorySetsPrivate::checkBasic(). Do
   // clear, though: this pass must not silently accumulate across strategy
   // rounds if it is starved by BREAK before another step clears for it.
@@ -535,6 +538,23 @@ void TheorySetsRels::collectRelsInfo()
           else
           {
             applyInstCycleRule(eqc_node[0], eqc_node.negate());
+          }
+        }
+        // collect acyclic-pattern info
+        else if (eqc_node.getKind() == Kind::RELATION_ACYCLIC_PATTERN)
+        {
+          if (is_true_eq)
+          {
+            // Key by the union's representative, mirroring d_acyclic_cache,
+            // so checkAcyclicPatternDown finds it by looking up the same
+            // representative it uses to search known members.
+            Node u = mkRelUnion(TupleUtils::getTupleElements(eqc_node[1]));
+            d_acyclic_pattern_cache[getRepresentative(u)].push_back(eqc_node);
+          }
+          else
+          {
+            applyInstCyclePatternRule(
+                eqc_node[0], eqc_node[1], eqc_node[2], eqc_node.negate());
           }
         }
         // collect relational terms info
@@ -1826,6 +1846,274 @@ void TheorySetsRels::applyInstCycleRule(Node relTuple, Node exp)
   sendInfer(conc, InferenceId::SETS_RELS_INST_CYCLE, exp);
 }
 
+Node TheorySetsRels::instantiateBody(Node boundVars,
+                                     Node body,
+                                     const std::vector<Node>& args)
+{
+  std::vector<Node> vars(boundVars.begin(), boundVars.end());
+  return body.substitute(vars.begin(), vars.end(), args.begin(), args.end());
+}
+
+/*
+ * INST_CYCLE_PRED:   NOT (rel.acyclic-pattern boundVars relTuple body)
+ *   ------------------------------------------------------------------
+ *   C := C U {(w1,w2) in U, ..., (wl,w1) in U, distinct(w1,...,wl),
+ *             body[w1/t1,...,wl/tl]}
+ * for fresh w1,...,wl, where l = boundVars' length and U is the union of
+ * relTuple's relations. Unlike applyInstCycleRule, this fires
+ * unconditionally in one shot: the pattern length is fixed by boundVars'
+ * own length (there is no unknown/existential length to case-split and
+ * incrementally unroll), so all l skolems and the full conclusion are
+ * introduced at once.
+ */
+void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
+                                               Node relTuple,
+                                               Node body,
+                                               Node exp)
+{
+  Trace("rels-debug") << "\n[Theory::Rels] *********** Applying "
+                         "RELATION_INST_CYCLE_PATTERN rule on relation tuple "
+                         "= "
+                      << relTuple << ", body = " << body
+                      << " and explanation " << exp << std::endl;
+
+  Assert(exp.getKind() == Kind::NOT);
+  Node atom = exp[0];
+  if (d_acyclic_pattern_instantiated.find(atom)
+      != d_acyclic_pattern_instantiated.end())
+  {
+    return;
+  }
+  d_acyclic_pattern_instantiated.insert(atom);
+
+  NodeManager* nm = nodeManager();
+  std::vector<Node> rels = TupleUtils::getTupleElements(relTuple);
+  Node relUnion = mkRelUnion(rels);
+  size_t l = boundVars.getNumChildren();
+
+  // Key the skolems on the acyclic-pattern atom itself (not just relUnion),
+  // so distinct acyclic-pattern instances over the same relations -- a
+  // different body, or more than one pattern asserted -- each get their own
+  // skolem sequence instead of colliding with each other or with
+  // applyInstCycleRule's SK_CYCLE_ELEM sequence for the base predicate.
+  std::vector<Node> ws;
+  ws.reserve(l);
+  for (size_t i = 0; i < l; i++)
+  {
+    ws.push_back(
+        d_skCache.mkTypedSkolemCached(boundVars[i].getType(),
+                                      atom,
+                                      nm->mkConstInt(Rational(i)),
+                                      SkolemCache::SK_CYCLE_PATTERN_ELEM,
+                                      "cycp"));
+  }
+
+  std::vector<Node> conjuncts;
+  for (size_t i = 0; i < l; i++)
+  {
+    Node next = ws[(i + 1) % l];
+    conjuncts.push_back(
+        nm->mkNode(Kind::SET_MEMBER,
+                   RelsUtils::constructPair(relUnion, ws[i], next),
+                   relUnion));
+  }
+  // distinct(w1,...,wl) needs at least two elements (Kind::DISTINCT requires
+  // arity >= 2); a length-1 pattern is a self-loop with nothing else to be
+  // distinct from.
+  if (l >= 2)
+  {
+    conjuncts.push_back(nm->mkNode(Kind::DISTINCT, ws));
+  }
+  conjuncts.push_back(instantiateBody(boundVars, body, ws));
+
+  Node conc = conjuncts.size() == 1 ? conjuncts[0]
+                                    : nm->mkNode(Kind::AND, conjuncts);
+
+  Trace("rels-cycles") << "InstCyclePatternRule: exp = " << exp
+                       << ", conc = " << conc << std::endl;
+
+  sendInfer(conc, InferenceId::SETS_RELS_INST_CYCLE_PATTERN, exp);
+}
+
+/*
+ * ACYCLIC_DOWN_PRED:  (w1,w2) in U ... (wl,w1) in U
+ *                     (rel.acyclic-pattern boundVars relTuple body) in Delta*
+ *   ------------------------------------------------------------------
+ *                     Delta := Delta U {NOT body[w1/t1,...,wl/tl]}
+ * where t1,...,tl are boundVars' elements, U = union of relTuple's
+ * relations, searching U's currently-known members for closed walks
+ * w1,...,wl (l = boundVars' length). Fires unconditionally for every such
+ * walk found: see fireAcyclicPatternDown for why this remains sound without
+ * gating on provable disequality.
+ */
+void TheorySetsRels::checkAcyclicPatternDown()
+{
+  for (const auto& cacheEntry : d_acyclic_pattern_cache)
+  {
+    Node unionRep = cacheEntry.first;
+    MEM_IT mem_it = d_rReps_memberReps_cache.find(unionRep);
+    if (mem_it == d_rReps_memberReps_cache.end())
+    {
+      continue;
+    }
+    const std::vector<Node>& members = mem_it->second;
+    const std::vector<Node>& exps = d_rReps_memberReps_exp_cache[unionRep];
+
+    // Adjacency: representative of a member's first component -> indices
+    // (into members/exps) of members whose first component has that
+    // representative.
+    std::map<Node, std::vector<size_t>> adj;
+    for (size_t idx = 0; idx < members.size(); idx++)
+    {
+      Node srcRep =
+          getRepresentative(TupleUtils::nthElementOfTuple(members[idx], 0));
+      adj[srcRep].push_back(idx);
+    }
+
+    for (const Node& atom : cacheEntry.second)
+    {
+      size_t l = atom[0].getNumChildren();
+      for (const auto& startEntry : adj)
+      {
+        std::vector<size_t> pathIdx;
+        std::vector<Node> pathReps{startEntry.first};
+        searchAcyclicPatternWalks(adj,
+                                  members,
+                                  exps,
+                                  startEntry.first,
+                                  l,
+                                  pathIdx,
+                                  pathReps,
+                                  atom);
+      }
+    }
+  }
+}
+
+void TheorySetsRels::searchAcyclicPatternWalks(
+    const std::map<Node, std::vector<size_t>>& adj,
+    const std::vector<Node>& members,
+    const std::vector<Node>& exps,
+    Node startRep,
+    size_t l,
+    std::vector<size_t>& pathIdx,
+    std::vector<Node>& pathReps,
+    Node atom)
+{
+  Node curRep = pathReps.back();
+  std::map<Node, std::vector<size_t>>::const_iterator it = adj.find(curRep);
+  if (it == adj.end())
+  {
+    return;
+  }
+  if (pathIdx.size() == l - 1)
+  {
+    // l - 1 edges placed already (l nodes visited); look for the closing
+    // edge back to startRep.
+    for (size_t idx : it->second)
+    {
+      Node destRep =
+          getRepresentative(TupleUtils::nthElementOfTuple(members[idx], 1));
+      if (destRep != startRep)
+      {
+        continue;
+      }
+      pathIdx.push_back(idx);
+      fireAcyclicPatternDown(members, exps, pathIdx, atom);
+      pathIdx.pop_back();
+    }
+    return;
+  }
+  for (size_t idx : it->second)
+  {
+    Node destRep =
+        getRepresentative(TupleUtils::nthElementOfTuple(members[idx], 1));
+    // Search-pruning only (not a soundness requirement, see
+    // fireAcyclicPatternDown): do not extend the walk through a node whose
+    // representative is already visited.
+    if (std::find(pathReps.begin(), pathReps.end(), destRep)
+        != pathReps.end())
+    {
+      continue;
+    }
+    pathIdx.push_back(idx);
+    pathReps.push_back(destRep);
+    searchAcyclicPatternWalks(
+        adj, members, exps, startRep, l, pathIdx, pathReps, atom);
+    pathReps.pop_back();
+    pathIdx.pop_back();
+  }
+}
+
+void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
+                                            const std::vector<Node>& exps,
+                                            const std::vector<size_t>& pathIdx,
+                                            Node atom)
+{
+  NodeManager* nm = nodeManager();
+  size_t l = pathIdx.size();
+
+  // w_i is the literal source of edge i. This is sound regardless of
+  // whether these are currently the "true" representatives of anything: the
+  // linking/distinctness facts below are added as antecedent conjuncts, not
+  // assumed, so the resulting clause is a tautology even if the search
+  // later backtracks past whatever merges justified this particular walk.
+  std::vector<Node> ws;
+  ws.reserve(l);
+  for (size_t i = 0; i < l; i++)
+  {
+    ws.push_back(TupleUtils::nthElementOfTuple(members[pathIdx[i]], 0));
+  }
+
+  std::vector<Node> reasonConjuncts;
+  reasonConjuncts.push_back(atom);
+  std::map<Node, Node> repsMap;  // representative -> literal term
+  for (size_t i = 0; i < l; i++)
+  {
+    reasonConjuncts.push_back(exps[pathIdx[i]]);
+
+    // Link this edge's destination to the next w (wrapping around to w_0
+    // for the last edge) if they are not already the same literal term --
+    // they are only guaranteed to share a representative, since that is all
+    // searchAcyclicPatternWalks matched on.
+    Node dest = TupleUtils::nthElementOfTuple(members[pathIdx[i]], 1);
+    Node nextW = ws[(i + 1) % l];
+    if (dest != nextW)
+    {
+      reasonConjuncts.push_back(nm->mkNode(Kind::EQUAL, dest, nextW));
+    }
+
+    Node wRep = getRepresentative(ws[i]);
+    if (ws[i] != wRep)
+    {
+      reasonConjuncts.push_back(nm->mkNode(Kind::EQUAL, ws[i], wRep));
+    }
+    repsMap.emplace(wRep, ws[i]);
+  }
+  // distinct(w1,...,wl): DISTINCT requires at least two children.
+  if (repsMap.size() >= 2)
+  {
+    std::vector<Node> distinctReps;
+    distinctReps.reserve(repsMap.size());
+    for (const auto& r : repsMap)
+    {
+      distinctReps.push_back(r.first);
+    }
+    reasonConjuncts.push_back(nm->mkNode(Kind::DISTINCT, distinctReps));
+  }
+
+  Node reason = reasonConjuncts.size() == 1
+                    ? reasonConjuncts[0]
+                    : nm->mkNode(Kind::AND, reasonConjuncts);
+
+  Node conc = nm->mkNode(Kind::NOT, instantiateBody(atom[0], atom[2], ws));
+
+  Trace("rels-cycles") << "AcyclicPatternDown: " << reason << " => " << conc
+                       << std::endl;
+
+  sendInfer(conc, InferenceId::SETS_RELS_ACYCLIC_PATTERN_DOWN, reason);
+}
+
 /*
  * RELATION_SPLIT_CYCLE_LEN:   (x,<s_1,...,s_cnt>,l) IN C     cnt <= l IN S
  *                     ------------------------------------------------------
@@ -2536,6 +2824,7 @@ bool TheorySetsRels::isRelationKind(Kind k)
          || k == Kind::RELATION_JOIN || k == Kind::RELATION_TABLE_JOIN
          || k == Kind::RELATION_TCLOSURE || k == Kind::RELATION_IDEN
          || k == Kind::RELATION_JOIN_IMAGE || k == Kind::RELATION_ACYCLIC
+         || k == Kind::RELATION_ACYCLIC_PATTERN
          || k == Kind::RELATION_RCLOSURE || k == Kind::RELATION_RTCLOSURE;
 }
 

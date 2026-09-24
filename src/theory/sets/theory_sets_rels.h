@@ -193,6 +193,12 @@ class TheorySetsRels : protected EnvObj
   /** Mapping from acyclic relation representative to its explanation(s) */
   std::map<Node, std::vector<Node>> d_acyclic_cache;
 
+  /** Mapping from the representative of R1 U ... U Rk to the (true)
+   * acyclic-pattern atoms (rel.acyclic-pattern (t1 ... tl) (tuple R1 ... Rk)
+   * P) whose relation tuple's union has that representative. Consumed by
+   * checkAcyclicPatternDown. */
+  std::map<Node, std::vector<Node>> d_acyclic_pattern_cache;
+
   /** Mapping from acyclic relation representatives to the cycle-witness
    * elements created so far (s1,...,s_cnt) and the symbolic eventual length of
    * the cycle, l. This must be context-dependent: it needs to correctly roll
@@ -202,6 +208,17 @@ class TheorySetsRels : protected EnvObj
                      std::pair<std::vector<Node>, Node>,
                      VectorNodeHashFunction>
       d_cycle_sequences;
+
+  /** Acyclic-pattern atoms (asserted false) for which InstCycle-Pred has
+   * already introduced its fixed-length skolem sequence. Unlike the
+   * unbounded acyclic predicate's d_cycle_sequences, the pattern predicate's
+   * length is fixed by its bound variable list's length, so InstCycle-Pred
+   * fires exactly once per atom (no incremental unrolling) -- this set just
+   * prevents redundant re-derivation across check() rounds within the same
+   * branch. Context-dependent for the same reason d_cycle_sequences is: it
+   * must roll back if the search backtracks past the assertion that
+   * triggered it. */
+  context::CDHashSet<Node> d_acyclic_pattern_instantiated;
 
   /** Mapping between transitive closure relation TC(r) and its TC graph
    * constructed based on the members of r*/
@@ -248,6 +265,79 @@ class TheorySetsRels : protected EnvObj
                              Node exp);
   void applyAcyclicDownRule(Node mem, Node rel, Node exp);
   void applyInstCycleRule(Node rel_rep, Node exp);
+  /**
+   * InstCycle-Pred: for a false acyclic-pattern atom
+   * (rel.acyclic-pattern boundVars relTuple body), introduces l fresh
+   * skolems w1,...,wl (l = boundVars' length) and asserts the l wraparound
+   * edge memberships over the union of relTuple's relations, their
+   * pairwise distinctness, and body with w1,...,wl substituted for
+   * boundVars. Fresh skolems are required here because boundVars' elements
+   * are bound variables (that is what exempts this closure's Boolean body
+   * from RemoveTermFormulas's purification -- see the comment on
+   * addClosureKind's use for this kind in smt2_state.cpp) and so cannot be
+   * used as free-standing terms outside this term. Unlike applyInstCycleRule,
+   * this fires unconditionally in one shot: the pattern length is fixed by
+   * boundVars' length, so there is no case-split/incremental-unrolling
+   * machinery needed here.
+   */
+  void applyInstCyclePatternRule(Node boundVars,
+                                 Node relTuple,
+                                 Node body,
+                                 Node exp);
+  /**
+   * AcyclicDown-Pred: for every known-true acyclic-pattern atom
+   * (rel.acyclic-pattern boundVars relTuple body), searches the current
+   * known members of relTuple's relation union U for closed walks of
+   * length exactly l = boundVars' length, with pairwise currently-distinct
+   * representatives (a search-pruning heuristic only, not a soundness
+   * requirement -- see fireAcyclicPatternDown). For each such walk
+   * w1,...,wl found, fires sendInfer(NOT body[w1/t1,...,wl/tl], ...)
+   * unconditionally, where t1,...,tl are boundVars' elements.
+   */
+  void checkAcyclicPatternDown();
+  /**
+   * Recursive helper for checkAcyclicPatternDown: extends the walk in
+   * pathIdx/pathReps (edge indices into members / node representatives
+   * visited so far, respectively) by one more edge out of adj, or, once
+   * l - 1 edges have been placed, looks for the closing edge back to
+   * startRep and fires on each one found.
+   */
+  void searchAcyclicPatternWalks(const std::map<Node, std::vector<size_t>>& adj,
+                                 const std::vector<Node>& members,
+                                 const std::vector<Node>& exps,
+                                 Node startRep,
+                                 size_t l,
+                                 std::vector<size_t>& pathIdx,
+                                 std::vector<Node>& pathReps,
+                                 Node atom);
+  /**
+   * Builds and sends the AcyclicDown-Pred conflict for one closed walk
+   * (pathIdx, indices into members/exps) found by searchAcyclicPatternWalks.
+   * w_i is taken as the literal source of edge i; wherever a representative
+   * is substituted for a literal term (linking one edge's destination to
+   * the next edge's source, or collecting distinct representatives for
+   * distinct(w1,...,wl)), an explicit equality is added as its own
+   * antecedent conjunct, unconditionally -- the same soundness idiom used
+   * by applyTCGroundingConflict, and for the same reason: the resulting
+   * clause must remain a tautology even if the search later backtracks past
+   * whatever merges made those representative choices. The conclusion
+   * substitutes w1,...,wl for atom's pattern-position tuple's elements
+   * t1,...,tl in atom's body.
+   */
+  void fireAcyclicPatternDown(const std::vector<Node>& members,
+                              const std::vector<Node>& exps,
+                              const std::vector<size_t>& pathIdx,
+                              Node atom);
+  /**
+   * Substitutes args for boundVars' variables in body. Since
+   * rel.acyclic-pattern's body is a plain Boolean term over its own bound
+   * variable list (not a separate function-typed value, and exempted from
+   * RemoveTermFormulas's Boolean-term purification by being a closure),
+   * this is a direct substitution -- no lambda purification or APPLY_UF is
+   * ever involved, unlike an encoding where the pattern is passed as a
+   * first-class predicate term.
+   */
+  Node instantiateBody(Node boundVars, Node body, const std::vector<Node>& args);
   /** Build a tuple term whose elements are the given relations. */
   Node mkRelTuple(const std::vector<Node>& rels);
   /** Build the (rewritten) union of the given relations. */

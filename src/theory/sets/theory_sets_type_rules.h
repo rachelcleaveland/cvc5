@@ -356,6 +356,23 @@ struct RelAcyclicTypeRule
 };
 
 /**
+ * Type rule for (rel.acyclic-pattern ((t1 T) ... (tl T)) A P), a closure
+ * whose bound variable list (t1 ... tl, l >= 1) must all share a common
+ * type T, where A is a tuple of binary relations of type (Relation T T) for
+ * that same T, and P is a Boolean term over t1 ... tl. The return type is
+ * boolean.
+ */
+struct RelAcyclicPatternTypeRule
+{
+  static TypeNode preComputeType(NodeManager* nm, TNode n);
+
+  static TypeNode computeType(NodeManager* nodeManager,
+                              TNode n,
+                              bool check,
+                              std::ostream* errOut);
+};
+
+/**
  * Type rule for operator (rel.join_image A c) that checks A is a binary
  * relation of type (Relation T T), where T is a type, and c is an integer
  * term (in fact c should be a non-negative constant, otherwise a logic

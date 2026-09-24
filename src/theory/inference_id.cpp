@@ -451,7 +451,11 @@ const char* toString(InferenceId i)
       return "SETS_RELS_TCLOSURE_GROUNDING_CONFLICT";
     case InferenceId::SETS_RELS_CONTR_MINIMAL: return "SETS_RELS_CONTR_MINIMAL";
     case InferenceId::SETS_RELS_ACYCLIC_DOWN: return "SETS_RELS_ACYCLIC_DOWN";
+    case InferenceId::SETS_RELS_ACYCLIC_PATTERN_DOWN:
+      return "SETS_RELS_ACYCLIC_PATTERN_DOWN";
     case InferenceId::SETS_RELS_INST_CYCLE: return "SETS_RELS_INST_CYCLE";
+    case InferenceId::SETS_RELS_INST_CYCLE_PATTERN:
+      return "SETS_RELS_INST_CYCLE_PATTERN";
     case InferenceId::SETS_RELS_SPLIT_CYCLE_LEN:
       return "SETS_RELS_SPLIT_CYCLE_LEN";
     case InferenceId::SETS_RELS_UNROLL_CYCLE: return "SETS_RELS_UNROLL_CYCLE";

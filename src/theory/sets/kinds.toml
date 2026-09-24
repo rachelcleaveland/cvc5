@@ -317,6 +317,20 @@ children = 1
 comment  = "relation acyclic"
 typerule = "::cvc5::internal::theory::sets::RelAcyclicTypeRule"
 
+# (rel.acyclic-pattern ((t1 T) ... (tl T)) (tuple R1 ... Rk) P) holds iff no
+# closed walk over R1 U ... U Rk through exactly the pairwise-distinct terms
+# t1,...,tl (i.e. (t1,t2) in the union, ..., (tl,t1) in the union) satisfies
+# P. This is a closure: (t1 T) ... (tl T) is a bound variable list fixing
+# the pattern length l and the relations' common domain type T, and P is a
+# Boolean term over t1,...,tl, not a separate function-typed value, so this
+# predicate never requires higher-order reasoning to state or use.
+[[kinds]]
+type     = "operator"
+name     = "RELATION_ACYCLIC_PATTERN"
+children = 3
+comment  = "relation acyclic pattern"
+typerule = "::cvc5::internal::theory::sets::RelAcyclicPatternTypeRule"
+
 [[kinds]]
 type     = "operator"
 name     = "RELATION_JOIN_IMAGE"

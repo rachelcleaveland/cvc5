@@ -1120,6 +1120,110 @@ TypeNode RelAcyclicTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->booleanType();
 }
 
+TypeNode RelAcyclicPatternTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                                   CVC5_UNUSED TNode n)
+{
+  return TypeNode::null();
+}
+TypeNode RelAcyclicPatternTypeRule::computeType(NodeManager* nodeManager,
+                                                TNode n,
+                                                bool check,
+                                                std::ostream* errOut)
+{
+  Assert(n.getKind() == Kind::RELATION_ACYCLIC_PATTERN);
+  if (check)
+  {
+    if (n[0].getKind() != Kind::BOUND_VAR_LIST)
+    {
+      if (errOut)
+      {
+        (*errOut) << "first argument of acyclic-pattern is not a bound "
+                     "variable list";
+      }
+      return TypeNode::null();
+    }
+    TypeNode argType = n[1].getTypeOrNull();
+    if (!argType.isTuple())
+    {
+      if (errOut)
+      {
+        (*errOut) << "acyclic-pattern operates on a non-tuple "
+                     "second argument";
+      }
+      return TypeNode::null();
+    }
+    // Same shape as (rel.acyclic A): a tuple of same-domain binary
+    // relations. Track the common domain type so it can be checked against
+    // the bound variables' types below.
+    TypeNode domainType;
+    for (const TypeNode& relType : argType.getTupleTypes())
+    {
+      if (!relType.isRelation())
+      {
+        if (errOut)
+        {
+          (*errOut) << "acyclic-pattern tuple element is not a relation";
+        }
+        return TypeNode::null();
+      }
+      std::vector<TypeNode> tupleTypes = relType[0].getTupleTypes();
+      if (tupleTypes.size() != 2)
+      {
+        if (errOut)
+        {
+          (*errOut) << "acyclic-pattern operates on non-binary relation";
+        }
+        return TypeNode::null();
+      }
+      if (!tupleTypes[0].isComparableTo(tupleTypes[1]))
+      {
+        if (errOut)
+        {
+          (*errOut)
+              << "acyclic-pattern operates on incompatible binary relation";
+        }
+        return TypeNode::null();
+      }
+      if (domainType.isNull())
+      {
+        domainType = tupleTypes[0];
+      }
+      else if (!domainType.isComparableTo(tupleTypes[0]))
+      {
+        if (errOut)
+        {
+          (*errOut)
+              << "acyclic-pattern relations do not share a common domain "
+                 "type";
+        }
+        return TypeNode::null();
+      }
+    }
+    for (const Node& v : n[0])
+    {
+      if (!domainType.isNull() && !v.getTypeOrNull().isComparableTo(domainType))
+      {
+        if (errOut)
+        {
+          (*errOut) << "acyclic-pattern bound variable type does not match "
+                       "the relations' domain type";
+        }
+        return TypeNode::null();
+      }
+    }
+    TypeNode bodyType = n[2].getTypeOrNull();
+    if (!bodyType.isBoolean())
+    {
+      if (errOut)
+      {
+        (*errOut) << "body of acyclic-pattern is not Boolean";
+      }
+      return TypeNode::null();
+    }
+  }
+  return nodeManager->booleanType();
+}
+
 TypeNode JoinImageTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
                                            CVC5_UNUSED TNode n)
 {
