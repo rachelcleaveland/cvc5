@@ -12,6 +12,8 @@
 
 #include "theory/sets/theory_sets_rels.h"
 
+#include <algorithm>
+
 #include "expr/dtype.h"
 #include "expr/dtype_cons.h"
 #include "options/sets_options.h"
@@ -1471,6 +1473,23 @@ void TheorySetsRels::applyProductRule(Node pt_rel, Node pt_rel_rep, Node exp)
   Node reason = exp;
   Node mem1 = nodeManager()->mkNode(Kind::APPLY_CONSTRUCTOR, r1_element);
   Node mem2 = nodeManager()->mkNode(Kind::APPLY_CONSTRUCTOR, r2_element);
+  // The split is redundant when both projections are already known members
+  // of the operands. This is always the case for the members that the
+  // PRODUCT-COMPOSE rule itself contributed (every pair of members of the
+  // operands), which otherwise are all split back into the memberships they
+  // were composed from: on relational benchmarks these redundant lemmas
+  // dominated the lemma count.
+  computeTupleReps(mem1);
+  computeTupleReps(mem2);
+  if (d_membership_trie[getRepresentative(pt_rel[0])].existsTerm(
+          d_tuple_reps[mem1])
+          != Node::null()
+      && d_membership_trie[getRepresentative(pt_rel[1])].existsTerm(
+             d_tuple_reps[mem2])
+             != Node::null())
+  {
+    return;
+  }
   Node fact_1 = nodeManager()->mkNode(Kind::SET_MEMBER, mem1, pt_rel[0]);
   Node fact_2 = nodeManager()->mkNode(Kind::SET_MEMBER, mem2, pt_rel[1]);
 
@@ -1865,6 +1884,52 @@ std::vector<Node> TheorySetsRels::applyUnrollCycle(
 
   sendInfer(disj, InferenceId::SETS_RELS_UNROLL_CYCLE, exp);
 
+  // Minimality: the witness is a shortest cycle of the graph
+  // TC(R1) U ... U TC(Rk). Two consecutive edges of such a cycle never lie in
+  // the same TC(Ri): by transitivity of TC(Ri) they could be replaced by a
+  // single edge, giving a shorter cycle (a 2-edge cycle would become a
+  // self-loop). Hence, for the new edge e = (s_cnt, s_{cnt+1}):
+  //  (a) e and the previous edge (s_{cnt-1}, s_cnt) are not both in TC(Ri),
+  //      whenever the new element belongs to the cycle (cnt < l);
+  //  (b) if the cycle closes at the new element (l = cnt + 1, so
+  //      s_{cnt+1} = s_1), e and the first edge (s_1, s_2) are not both in
+  //      TC(Ri).
+  // ContrMinimal implies these constraints only indirectly (via a chord that
+  // the transitive-closure rules first have to infer); stating them here
+  // prunes the choice of the relation of every unrolled edge immediately.
+  if (cnt >= 2)
+  {
+    Node acyc = nm->mkNode(Kind::RELATION_ACYCLIC, mkRelTuple(rels)).negate();
+    Node reasonA = nm->mkNode(Kind::AND, acyc, exp);
+    Node reasonB = nm->mkNode(
+        Kind::AND,
+        acyc,
+        nm->mkNode(Kind::EQUAL, l, nm->mkConstInt(Rational(cnt + 1))));
+    for (const Node& Ri : rels)
+    {
+      TypeNode tt = Ri.getType().getSetElementType();
+      Node Ri_tclos = nm->mkNode(Kind::RELATION_TCLOSURE, Ri);
+      Node newEdge = nm->mkNode(
+          Kind::SET_MEMBER,
+          TupleUtils::constructTupleFromElements(tt, {sPrev, newElem}, 0, 1),
+          Ri_tclos);
+      Node prevEdge = nm->mkNode(
+          Kind::SET_MEMBER,
+          TupleUtils::constructTupleFromElements(tt, {s[cnt - 2], sPrev}, 0, 1),
+          Ri_tclos);
+      Node firstEdge = nm->mkNode(
+          Kind::SET_MEMBER,
+          TupleUtils::constructTupleFromElements(tt, {s[0], s[1]}, 0, 1),
+          Ri_tclos);
+      sendInfer(nm->mkNode(Kind::AND, prevEdge, newEdge).negate(),
+                InferenceId::SETS_RELS_CONTR_MINIMAL,
+                reasonA);
+      sendInfer(nm->mkNode(Kind::AND, newEdge, firstEdge).negate(),
+                InferenceId::SETS_RELS_CONTR_MINIMAL,
+                reasonB);
+    }
+  }
+
   std::vector<Node> sNew = s;
   sNew.push_back(newElem);
   d_cycle_sequences.insert(rels, std::make_pair(sNew, l));
@@ -2043,16 +2108,206 @@ void TheorySetsRels::doCycleInference()
       ++c_it;
       continue;
     }
+    Node acyc_exp = nodeManager()
+                        ->mkNode(Kind::RELATION_ACYCLIC, mkRelTuple(rels))
+                        .negate();
     // applyUnrollCycle returns the extended vector with the newly-created
     // element appended.
     s = applyUnrollCycle(rels, s, l);
     applySplitCycleLenRule(rels, s, l);
     // Minimality: forbid shortcut edges in the cycle.
-    Node acyc_exp = nodeManager()
-                        ->mkNode(Kind::RELATION_ACYCLIC, mkRelTuple(rels))
-                        .negate();
     applyContrMinimalRule(rels, s, l, acyc_exp);
+    applyAcyclicAnchorRules(rels, s, acyc_exp);
     ++c_it;
+  }
+}
+
+/*
+ * Use the asserted (positive) acyclicity constraints to constrain the cycle
+ * witness of a negated one. Let R = R1 U ... U Rk be the relation of the
+ * witness and let acyclic(S) hold for S = S1 U ... U Sm of the same type.
+ * A cycle of R that used only edges of TC(S) would be a cycle of TC(S), which
+ * acyclic(S) forbids. Hence:
+ *
+ *  (1) INCLUSION: some edge of R is not in TC(S):
+ *        NOT acyclic(R) /\ acyclic(S)  =>  t IN R /\ t NOT IN TC(S)
+ *      for a fresh tuple t (one per pair (R,S)). This usually admits a local
+ *      refutation that does not depend on the length of the cycle, e.g. when
+ *      every edge of R is a path of S, or when the edges of R outside S are
+ *      excluded by the templates of the benchmark.
+ *
+ *  (2) ROTATION: the witness (a shortest cycle of TC(R1) U ... U TC(Rk), see
+ *      ContrMinimal) also contains an edge outside TC(S); rotating a shortest
+ *      cycle preserves all its properties, so we may assume its first edge is
+ *      such an edge:
+ *        NOT acyclic(R) /\ acyclic(S)  =>  (s_1, s_2) NOT IN TC(S).
+ *      This breaks the rotational symmetry of the witness and anchors the
+ *      search at an edge of R that leaves S.
+ */
+void TheorySetsRels::collectUnionOperands(Node r, std::vector<Node>& parts)
+{
+  if (r.getKind() == Kind::SET_UNION)
+  {
+    collectUnionOperands(r[0], parts);
+    collectUnionOperands(r[1], parts);
+    return;
+  }
+  parts.push_back(r);
+}
+
+bool TheorySetsRels::isSyntacticallyInTC(Node x, Node s)
+{
+  // x is included in TC(s) for every interpretation if
+  //   x = s, or x = TC(y) with y included,
+  //   x = inter(y, z) with y or z included,
+  //   x = minus(y, z) with y included,
+  //   x = union(y, z) with y and z included,
+  //   x = join(y, z) with y and z included (TC(s) is transitive), or with one
+  //     of them of the form iden(w) and the other included (iden(w);y and
+  //     y;iden(w) are subsets of y).
+  if (x == s)
+  {
+    return true;
+  }
+  switch (x.getKind())
+  {
+    case Kind::RELATION_TCLOSURE: return isSyntacticallyInTC(x[0], s);
+    case Kind::SET_INTER:
+      return isSyntacticallyInTC(x[0], s) || isSyntacticallyInTC(x[1], s);
+    case Kind::SET_MINUS: return isSyntacticallyInTC(x[0], s);
+    case Kind::SET_UNION:
+      return isSyntacticallyInTC(x[0], s) && isSyntacticallyInTC(x[1], s);
+    case Kind::RELATION_JOIN:
+    {
+      bool l = isSyntacticallyInTC(x[0], s);
+      bool r = isSyntacticallyInTC(x[1], s);
+      if (l && r)
+      {
+        return true;
+      }
+      if (l && x[1].getKind() == Kind::RELATION_IDEN) return true;
+      if (r && x[0].getKind() == Kind::RELATION_IDEN) return true;
+      return false;
+    }
+    default: return false;
+  }
+}
+
+void TheorySetsRels::applyAcyclicAnchorRules(const std::vector<Node>& rels,
+                                             const std::vector<Node>& s,
+                                             Node acyc_exp)
+{
+  NodeManager* nm = nodeManager();
+  options::RelsAcyclicAnchorMode mode = options().sets.relsAcyclicAnchor;
+  bool doIncl = mode == options::RelsAcyclicAnchorMode::INCLUSION
+                || mode == options::RelsAcyclicAnchorMode::BOTH;
+  bool doRot = mode == options::RelsAcyclicAnchorMode::ROTATION
+               || mode == options::RelsAcyclicAnchorMode::BOTH;
+  if (mode == options::RelsAcyclicAnchorMode::NONE)
+  {
+    return;
+  }
+  Node relUnion = mkRelUnion(rels);
+  TypeNode tt = relUnion.getType().getSetElementType();
+  // Collect the applicable positive constraints. For the rotation (which may
+  // anchor on one S only) prefer an S that is itself one of the relations of
+  // the witness, the earliest in the tuple; the rotation is then most likely
+  // to force an edge of another relation (e.g. an rf edge leaving po+).
+  std::vector<Node> positives;
+  for (const auto& entry : d_acyclic_cache)
+  {
+    for (const Node& acyc : entry.second)
+    {
+      Node sUnion = mkRelUnion(TupleUtils::getTupleElements(acyc[0]));
+      if (sUnion.getType() != relUnion.getType() || sUnion == relUnion)
+      {
+        continue;
+      }
+      positives.push_back(acyc);
+    }
+  }
+  std::stable_sort(
+      positives.begin(), positives.end(), [&](const Node& a, const Node& b) {
+        auto rank = [&](const Node& ac) {
+          Node su = mkRelUnion(TupleUtils::getTupleElements(ac[0]));
+          for (size_t i = 0; i < rels.size(); i++)
+          {
+            if (rels[i] == su) return i;
+          }
+          return rels.size();
+        };
+        return rank(a) < rank(b);
+      });
+  for (const Node& acyc : positives)
+  {
+    {
+      Node sUnion = mkRelUnion(TupleUtils::getTupleElements(acyc[0]));
+      Node reason = nm->mkNode(Kind::AND, acyc_exp, acyc);
+      Node tcS = nm->mkNode(Kind::RELATION_TCLOSURE, sUnion);
+      std::pair<Node, Node> key(relUnion, sUnion);
+      if (d_anchorInclusionSent.find(key) == d_anchorInclusionSent.end())
+      {
+        // The witness edge cannot lie in a part of R that is syntactically
+        // included in TC(S); restrict it to the remaining parts of R. If
+        // every part is included, the two constraints are contradictory: this
+        // conflict needs no fresh element and is emitted in every mode. The
+        // witness for the remaining parts introduces a fresh tuple and is
+        // only emitted in the inclusion modes.
+        std::vector<Node> parts;
+        collectUnionOperands(relUnion, parts);
+        std::vector<Node> rest;
+        for (const Node& part : parts)
+        {
+          if (!isSyntacticallyInTC(part, sUnion))
+          {
+            rest.push_back(part);
+          }
+        }
+        Node conc;
+        if (rest.empty())
+        {
+          d_anchorInclusionSent.insert(key);
+          conc = nm->mkConst(false);
+        }
+        else if (!doIncl)
+        {
+          conc = Node::null();
+        }
+        else
+        {
+          d_anchorInclusionSent.insert(key);
+          Node restUnion = mkRelUnion(rest);
+          Node t = d_skCache.mkTypedSkolemCached(
+              tt, relUnion, sUnion, SkolemCache::SK_CYCLE_ELEM, "cycedge");
+          conc = nm->mkNode(Kind::AND,
+                            nm->mkNode(Kind::SET_MEMBER, t, restUnion),
+                            nm->mkNode(Kind::SET_MEMBER, t, tcS).negate());
+        }
+        if (!conc.isNull())
+        {
+          Trace("rels-cycles") << "AcyclicAnchor (inclusion): " << conc
+                               << " from " << reason << std::endl;
+          sendInfer(conc, InferenceId::SETS_RELS_CONTR_MINIMAL, reason);
+        }
+      }
+      // The rotation may only be applied for ONE positive constraint S per
+      // witness: different S may be left by different edges of the cycle.
+      // We anchor on the first S encountered for this witness.
+      std::pair<Node, Node> rotKey(relUnion, Node::null());
+      bool rotUsed =
+          d_anchorRotationSent.find(rotKey) != d_anchorRotationSent.end();
+      if (doRot && s.size() >= 2 && !rotUsed)
+      {
+        d_anchorRotationSent.insert(rotKey);
+        d_anchorRotationSent.insert(key);
+        Node firstEdge =
+            TupleUtils::constructTupleFromElements(tt, {s[0], s[1]}, 0, 1);
+        Node conc = nm->mkNode(Kind::SET_MEMBER, firstEdge, tcS).negate();
+        Trace("rels-cycles") << "AcyclicAnchor (rotation): " << conc << " from "
+                             << reason << std::endl;
+        sendInfer(conc, InferenceId::SETS_RELS_CONTR_MINIMAL, reason);
+      }
+    }
   }
 }
 

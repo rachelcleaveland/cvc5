@@ -205,6 +205,9 @@ class TheorySetsRels : protected EnvObj
 
   /** Mapping from acyclic relation representative to its explanation(s) */
   std::map<Node, std::vector<Node>> d_acyclic_cache;
+  /** (R, S) pairs for which the inclusion / rotation anchor lemmas were sent */
+  std::set<std::pair<Node, Node>> d_anchorInclusionSent;
+  std::set<std::pair<Node, Node>> d_anchorRotationSent;
 
   /** Mapping from acyclic relation representatives to the cycle-witness
    * elements created so far (s1,...,s_cnt) and the symbolic eventual length of
@@ -409,6 +412,18 @@ class TheorySetsRels : protected EnvObj
    * reached --rels-acyclic-unroll-max are reported as incomplete instead.
    */
   void doCycleInference();
+  /**
+   * Constrain the cycle witness (rels, s) of a negated acyclicity constraint
+   * (acyc_exp) with the asserted positive acyclicity constraints: see the
+   * comment at the definition.
+   */
+  void applyAcyclicAnchorRules(const std::vector<Node>& rels,
+                               const std::vector<Node>& s,
+                               Node acyc_exp);
+  /** Flatten the set.union operands of r into parts. */
+  void collectUnionOperands(Node r, std::vector<Node>& parts);
+  /** Is x a subset of TC(s) in every interpretation, by its shape? */
+  bool isSyntacticallyInTC(Node x, Node s);
   /**
    * Called at the end of a full-effort check. For each transitive closure
    * term TC(r) with a graph in d_tcr_tcGraph, computes the transitive
