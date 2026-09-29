@@ -69,3 +69,11 @@ name   = "Sets Theory"
 [[option.mode.BOTH]]
   name = "both"
   help = "Rotation and inclusion."
+
+[[option]]
+  name       = "relsAcyclicBackwardChords"
+  category   = "expert"
+  long       = "rels-acyclic-backward-chords"
+  type       = "bool"
+  default    = "false"
+  help       = "in the minimality rule of the cycle witness of a negated rel.acyclic constraint, also forbid backward chords, i.e. closure edges from a later to an earlier element of the witness; sound, and needed by unsat proofs that rely on a totality axiom over one of the relations, but it slows down finite model finding"

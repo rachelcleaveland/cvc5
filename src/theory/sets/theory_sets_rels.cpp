@@ -1937,6 +1937,26 @@ std::vector<Node> TheorySetsRels::applyUnrollCycle(
  * we forbid (s_q,s_r) IN TC(R) for every 1 <= q < r - 1 <= cnt - 1. Also, we
  * forbid s_q = s_r for every 1 <= q < r <= cnt, except for the one allowed by
  * the cycle definition: q = 1  and r = cnt.
+ *
+ * RELATION_CONTR_MINIMAL III (option --rels-acyclic-backward-chords):
+ *                           ((R1,...,Rk),(s_1,...,s_cnt),l) IN C
+ *                           1 <= q < r <= cnt   b IN [1,k]
+ *                           (r < l and l > r - q + 2) or (r = l and q != 2)
+ *                         ---------------------------------------
+ *                           (s[r],s[q]) NOT IN RELATION_TCLOSURE(Rb)
+ *
+ * Recall that the witness has l elements with s_l = s_1, i.e. l - 1 edges
+ * (s_i, s_{i+1}). A backward edge (s_r, s_q) with r < l closes the sub-cycle
+ * s_q, ..., s_r, s_q of r - q + 1 edges, which is shorter than the witness iff
+ * r - q + 1 < l - 1. Notably the reverse of any edge (r = q + 1) is excluded
+ * as soon as l >= 4. For r = l the edge is (s_1, s_q): a self-loop if q = 1
+ * (shorter iff l >= 3), the first edge itself if q = 2, and otherwise the
+ * cycle s_1, s_q, ..., s_{l-1}, s_1 of l - q + 1 < l - 1 edges. Backward
+ * chords are what lets a totality axiom on one of the relations (e.g.,
+ * program order within a thread) bound the length of the witness: two cycle
+ * elements that the axiom relates in either direction must be adjacent. They
+ * are optional because they slow down finite model finding on satisfiable
+ * problems.
  */
 void TheorySetsRels::applyContrMinimalRule(const std::vector<Node>& rels,
                                            const std::vector<Node>& s,
@@ -1947,41 +1967,89 @@ void TheorySetsRels::applyContrMinimalRule(const std::vector<Node>& rels,
   Trace("rels-debug") << "\n[Theory::Rels] *********** Applying "
                          "RELATION_CONTR_MINIMAL rule, cnt = "
                       << cnt << ", l = " << l << ", exp = " << exp << std::endl;
-  // need r >= 3 and q <= r-2, so the smallest usable case is q=1, r=3
-  if (cnt < 3) return;
+  // the smallest usable case is the pair (s_1, s_2)
+  if (cnt < 2) return;
   NodeManager* nm = nodeManager();
+  bool backward = options().sets.relsAcyclicBackwardChords;
 
   for (const Node& Ri : rels)
   {
     TypeNode tt = Ri.getType().getSetElementType();
     Node Ri_tc = nm->mkNode(Kind::RELATION_TCLOSURE, Ri);
-    // 1 <= q < r - 1 <= cnt - 1 =>  r in [3, cnt], q in [1, r-2]
-    for (size_t r = 3; r <= cnt; ++r)
+    for (size_t r = 2; r <= cnt; ++r)
     {
       Node sr = s[r - 1];  // Adjust for 0-based indexing
+      // s_r is an element of the cycle only if r <= l
       Node r_leq_l = nm->mkNode(Kind::LEQ, nm->mkConstInt(Rational(r)), l);
       Node reason = nm->mkNode(Kind::AND, exp, r_leq_l);
-      for (size_t q = 1; q + 2 <= r; ++q)
+      // (s_1, s_r) is the closing pair of the cycle when r = l
+      Node r_neq_l =
+          nm->mkNode(Kind::EQUAL, nm->mkConstInt(Rational(r)), l).notNode();
+      Node reason_not_closing = nm->mkNode(Kind::AND, reason, r_neq_l);
+      for (size_t q = 1; q < r; ++q)
       {
         Node sq = s[q - 1];  // Adjust for 0-based indexing
+        Node reason_pair = q == 1 ? reason_not_closing : reason;
+        // II: s_q and s_r are distinct, except for the closing pair
+        Node conc_diseq = nm->mkNode(Kind::EQUAL, sq, sr).notNode();
+        sendInfer(
+            conc_diseq, InferenceId::SETS_RELS_CONTR_MINIMAL, reason_pair);
+        if (backward)
+        {
+          // III: no backward edge (s_r, s_q) that closes a shorter cycle
+          Node bwd =
+              TupleUtils::constructTupleFromElements(tt, {sr, sq}, 0, 1);
+          Node conc_bwd = nm->mkNode(Kind::SET_MEMBER, bwd, Ri_tc).notNode();
+          std::vector<Node> bwd_reasons;
+          if (q >= 3)
+          {
+            // r < l: r - q + 1 < l - 1 follows from r + 1 <= l; r = l: the
+            // edge (s_1, s_q) closes a cycle of l - q + 1 < l - 1 edges;
+            // together r <= l
+            bwd_reasons.push_back(reason);
+          }
+          else if (q == 2)
+          {
+            // r < l as above; for r = l the edge is the first edge itself
+            bwd_reasons.push_back(nm->mkNode(
+                Kind::AND,
+                exp,
+                nm->mkNode(Kind::LEQ, nm->mkConstInt(Rational(r + 1)), l)));
+          }
+          else
+          {
+            // q = 1, r < l: the sub-cycle s_1, ..., s_r, s_1 has r edges,
+            // shorter iff r + 2 <= l; r = l: a self-loop of s_1, shorter iff
+            // l >= 3
+            bwd_reasons.push_back(nm->mkNode(
+                Kind::AND,
+                exp,
+                nm->mkNode(Kind::LEQ, nm->mkConstInt(Rational(r + 2)), l)));
+            if (r >= 3)
+            {
+              bwd_reasons.push_back(nm->mkNode(
+                  Kind::AND,
+                  exp,
+                  nm->mkNode(Kind::EQUAL, l, nm->mkConstInt(Rational(r)))));
+            }
+          }
+          for (const Node& br : bwd_reasons)
+          {
+            sendInfer(conc_bwd, InferenceId::SETS_RELS_CONTR_MINIMAL, br);
+            Trace("rels-cycles") << "ContrMinimal: exp = " << br
+                                 << ", conc = " << conc_bwd << std::endl;
+          }
+        }
+        if (q + 2 > r)
+        {
+          // adjacent: (s_q, s_r) is an edge of the witness, not a chord
+          continue;
+        }
+        // I: no forward chord (s_q, s_r) between non-adjacent elements
         Node tup = TupleUtils::constructTupleFromElements(tt, {sq, sr}, 0, 1);
         Node mem = nm->mkNode(Kind::SET_MEMBER, tup, Ri_tc);
         Node conc = mem.notNode();
         sendInfer(conc, InferenceId::SETS_RELS_CONTR_MINIMAL, reason);
-
-        // s_q and s_r must be pairwise distinct, EXCEPT when they are the first
-        // and last cycle elements (q=1 and r=l).
-        Node reason_diseq = reason;
-        if (q == 1)
-        {
-          Node r_neq_l =
-              nm->mkNode(Kind::EQUAL, nm->mkConstInt(Rational(r)), l).notNode();
-          reason_diseq = nm->mkNode(Kind::AND, reason, r_neq_l);
-        }
-        Node conc_diseq = nm->mkNode(Kind::EQUAL, sq, sr).notNode();
-        sendInfer(
-            conc_diseq, InferenceId::SETS_RELS_CONTR_MINIMAL, reason_diseq);
-
         Trace("rels-cycles") << "ContrMinimal: exp = " << reason
                              << ", conc = " << conc << std::endl;
       }

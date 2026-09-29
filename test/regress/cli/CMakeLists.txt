@@ -3503,6 +3503,7 @@ set(regress_1_tests
   regress1/quantifiers/z3.855483_dio_nl.smt2
   regress1/rels/cycles/acyclic-by-inclusion.smt2
   regress1/rels/cycles/acyclic-down-exp-tuple.smt2
+  regress1/rels/cycles/acyclic-ltts-sc-1-th.smt2
   regress1/rels/cycles/acyclic1.smt2
   regress1/rels/cycles/acyclic2.smt2
   regress1/rels/cycles/acyclic3.smt2
