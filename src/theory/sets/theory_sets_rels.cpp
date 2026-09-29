@@ -1473,23 +1473,6 @@ void TheorySetsRels::applyProductRule(Node pt_rel, Node pt_rel_rep, Node exp)
   Node reason = exp;
   Node mem1 = nodeManager()->mkNode(Kind::APPLY_CONSTRUCTOR, r1_element);
   Node mem2 = nodeManager()->mkNode(Kind::APPLY_CONSTRUCTOR, r2_element);
-  // The split is redundant when both projections are already known members
-  // of the operands. This is always the case for the members that the
-  // PRODUCT-COMPOSE rule itself contributed (every pair of members of the
-  // operands), which otherwise are all split back into the memberships they
-  // were composed from: on relational benchmarks these redundant lemmas
-  // dominated the lemma count.
-  computeTupleReps(mem1);
-  computeTupleReps(mem2);
-  if (d_membership_trie[getRepresentative(pt_rel[0])].existsTerm(
-          d_tuple_reps[mem1])
-          != Node::null()
-      && d_membership_trie[getRepresentative(pt_rel[1])].existsTerm(
-             d_tuple_reps[mem2])
-             != Node::null())
-  {
-    return;
-  }
   Node fact_1 = nodeManager()->mkNode(Kind::SET_MEMBER, mem1, pt_rel[0]);
   Node fact_2 = nodeManager()->mkNode(Kind::SET_MEMBER, mem2, pt_rel[1]);
 
