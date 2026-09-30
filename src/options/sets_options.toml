@@ -47,4 +47,33 @@ name   = "Sets Theory"
   long       = "rels-acyclic-unroll-max=N"
   type       = "int64_t"
   default    = "-1"
-  help       = "defers cycle unrolling past N edges, prioritizing exploring shorter cycles"
+  help       = "caps relation-acyclicity cycle-witness unrolling at N edges (-1 == no limit, default); obligations that would need to unroll further are reported as incomplete instead of unrolled unboundedly"
+
+[[option]]
+  name       = "relsAcyclicAnchor"
+  category   = "expert"
+  long       = "rels-acyclic-anchor=MODE"
+  type       = "RelsAcyclicAnchorMode"
+  default    = "ROTATION"
+  help       = "how the cycle witness of a negated relation-acyclicity constraint is anchored with the asserted (positive) acyclicity constraints"
+  help_mode  = "Anchoring modes for relation-acyclicity cycle witnesses."
+[[option.mode.NONE]]
+  name = "none"
+  help = "No anchoring."
+[[option.mode.ROTATION]]
+  name = "rotation"
+  help = "Default. For one positive constraint acyclic(S), rotate the witness so that its first edge is not in TC(S)."
+[[option.mode.INCLUSION]]
+  name = "inclusion"
+  help = "For every positive constraint acyclic(S), introduce an edge of the cyclic relation that is not in TC(S). May introduce fresh elements and slow down finite model finding."
+[[option.mode.BOTH]]
+  name = "both"
+  help = "Rotation and inclusion."
+
+[[option]]
+  name       = "relsAcyclicBackwardChords"
+  category   = "expert"
+  long       = "rels-acyclic-backward-chords"
+  type       = "bool"
+  default    = "false"
+  help       = "in the minimality rule of the cycle witness of a negated rel.acyclic constraint, also forbid backward chords, i.e. closure edges from a later to an earlier element of the witness; sound, and needed by unsat proofs that rely on a totality axiom over one of the relations, but it slows down finite model finding"
