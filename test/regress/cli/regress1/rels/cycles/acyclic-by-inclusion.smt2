@@ -1,4 +1,5 @@
-; REQUIRES: unrestricted-mode
+; REQUIRES: no-safe-mode
+; REQUIRES: no-stable-mode
 ; EXPECT: unsat
 ;
 ; Every edge of (rel.join (rel.iden A) po) is an edge of po, so a cycle of it

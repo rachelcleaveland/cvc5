@@ -1,4 +1,5 @@
-; REQUIRES: unrestricted-mode
+; REQUIRES: no-safe-mode
+; REQUIRES: no-stable-mode
 ; COMMAND-LINE: --e-matching --inst-when=full --rels-acyclic-anchor=inclusion --rels-acyclic-backward-chords --no-check-unsat-cores
 ; EXPECT: unsat
 ; DISABLE-TESTER: cpc
