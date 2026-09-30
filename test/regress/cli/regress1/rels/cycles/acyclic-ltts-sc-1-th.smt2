@@ -1,6 +1,7 @@
 ; REQUIRES: unrestricted-mode
 ; COMMAND-LINE: --e-matching --inst-when=full --rels-acyclic-anchor=inclusion --rels-acyclic-backward-chords --no-check-unsat-cores
 ; EXPECT: unsat
+; DISABLE-TESTER: cpc
 ;
 ; Litmus-template completeness query for sequential consistency with one
 ; thread (sc-1-th of rachelcleaveland/relational-solver-benchmarks): is there
@@ -14,7 +15,9 @@
 ; non-adjacent witness elements, so the totality axiom bounds the witness to
 ; three elements. Without the option this query does not terminate within
 ; minutes under --inst-when=full. The unsat-core check is disabled because the
-; core is re-checked without these options.
+; core is re-checked without these options; the CPC proof check is disabled
+; because the exported proof has a quant-dt-split step whose side condition
+; mentions rel.acyclic, which the CPC signature does not define.
 (set-logic ALL)
 (set-option :finite-model-find true)
 (set-option :sets-exp true)
