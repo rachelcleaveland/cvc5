@@ -2044,8 +2044,7 @@ void TheorySetsRels::applyContrMinimalRule(const std::vector<Node>& rels,
         if (backward)
         {
           // III: no backward edge (s_r, s_q) that closes a shorter cycle
-          Node bwd =
-              TupleUtils::constructTupleFromElements(tt, {sr, sq}, 0, 1);
+          Node bwd = TupleUtils::constructTupleFromElements(tt, {sr, sq}, 0, 1);
           Node conc_bwd = nm->mkNode(Kind::SET_MEMBER, bwd, Ri_tc).notNode();
           std::vector<Node> bwd_reasons;
           if (q >= 3)
