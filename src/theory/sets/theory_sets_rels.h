@@ -269,16 +269,19 @@ class TheorySetsRels : protected EnvObj
    * InstCycle-Pred: for a false acyclic-pattern atom
    * (rel.acyclic-pattern boundVars relTuple body), introduces l fresh
    * skolems w1,...,wl (l = boundVars' length) and asserts the l wraparound
-   * edge memberships over the union of relTuple's relations, their
-   * pairwise distinctness, and body with w1,...,wl substituted for
-   * boundVars. Fresh skolems are required here because boundVars' elements
-   * are bound variables (that is what exempts this closure's Boolean body
-   * from RemoveTermFormulas's purification -- see the comment on
-   * addClosureKind's use for this kind in smt2_state.cpp) and so cannot be
-   * used as free-standing terms outside this term. Unlike applyInstCycleRule,
-   * this fires unconditionally in one shot: the pattern length is fixed by
-   * boundVars' length, so there is no case-split/incremental-unrolling
-   * machinery needed here.
+   * edge memberships over the union of relTuple's relations, and body with
+   * w1,...,wl substituted for boundVars. Fresh skolems are required here
+   * because boundVars' elements are bound variables (that is what exempts
+   * this closure's Boolean body from RemoveTermFormulas's purification --
+   * see the comment on addClosureKind's use for this kind in
+   * smt2_state.cpp) and so cannot be used as free-standing terms outside
+   * this term. Unlike applyInstCycleRule, this fires unconditionally in one
+   * shot: the pattern length is fixed by boundVars' length, so there is no
+   * case-split/incremental-unrolling machinery needed here.
+   *
+   * EXPERIMENT: this used to also assert w1,...,wl's pairwise distinctness
+   * (see the commented-out block in the .cpp); that requirement has been
+   * removed, so w1,...,wl may witness a closed walk that revisits nodes.
    */
   void applyInstCyclePatternRule(Node boundVars,
                                  Node relTuple,
@@ -293,6 +296,12 @@ class TheorySetsRels : protected EnvObj
    * requirement -- see fireAcyclicPatternDown). For each such walk
    * w1,...,wl found, fires sendInfer(NOT body[w1/t1,...,wl/tl], ...)
    * unconditionally, where t1,...,tl are boundVars' elements.
+   *
+   * EXPERIMENT: fireAcyclicPatternDown used to also require w1,...,wl to be
+   * provably distinct as an antecedent before firing (see the
+   * commented-out block there); that requirement has been removed, matching
+   * the removal of distinct(...) from applyInstCyclePatternRule's
+   * conclusion.
    */
   void checkAcyclicPatternDown();
   /**
@@ -315,14 +324,17 @@ class TheorySetsRels : protected EnvObj
    * (pathIdx, indices into members/exps) found by searchAcyclicPatternWalks.
    * w_i is taken as the literal source of edge i; wherever a representative
    * is substituted for a literal term (linking one edge's destination to
-   * the next edge's source, or collecting distinct representatives for
-   * distinct(w1,...,wl)), an explicit equality is added as its own
+   * the next edge's source), an explicit equality is added as its own
    * antecedent conjunct, unconditionally -- the same soundness idiom used
    * by applyTCGroundingConflict, and for the same reason: the resulting
    * clause must remain a tautology even if the search later backtracks past
    * whatever merges made those representative choices. The conclusion
    * substitutes w1,...,wl for atom's pattern-position tuple's elements
    * t1,...,tl in atom's body.
+   *
+   * EXPERIMENT: this used to also collect distinct representatives and add
+   * distinct(w1,...,wl) as an antecedent conjunct (see the commented-out
+   * block in the .cpp); that requirement has been removed.
    */
   void fireAcyclicPatternDown(const std::vector<Node>& members,
                               const std::vector<Node>& exps,

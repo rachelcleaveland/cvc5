@@ -1857,7 +1857,7 @@ Node TheorySetsRels::instantiateBody(Node boundVars,
 /*
  * INST_CYCLE_PRED:   NOT (rel.acyclic-pattern boundVars relTuple body)
  *   ------------------------------------------------------------------
- *   C := C U {(w1,w2) in U, ..., (wl,w1) in U, distinct(w1,...,wl),
+ *   C := C U {(w1,w2) in U, ..., (wl,w1) in U,
  *             body[w1/t1,...,wl/tl]}
  * for fresh w1,...,wl, where l = boundVars' length and U is the union of
  * relTuple's relations. Unlike applyInstCycleRule, this fires
@@ -1865,6 +1865,10 @@ Node TheorySetsRels::instantiateBody(Node boundVars,
  * own length (there is no unknown/existential length to case-split and
  * incrementally unroll), so all l skolems and the full conclusion are
  * introduced at once.
+ *
+ * EXPERIMENT: distinct(w1,...,wl) removed from the conclusion (was
+ * previously required -- see the commented-out block below). w1,...,wl may
+ * now witness a closed walk that revisits nodes, not just a simple cycle.
  */
 void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
                                                Node relTuple,
@@ -1917,13 +1921,15 @@ void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
                    RelsUtils::constructPair(relUnion, ws[i], next),
                    relUnion));
   }
-  // distinct(w1,...,wl) needs at least two elements (Kind::DISTINCT requires
-  // arity >= 2); a length-1 pattern is a self-loop with nothing else to be
-  // distinct from.
-  if (l >= 2)
-  {
-    conjuncts.push_back(nm->mkNode(Kind::DISTINCT, ws));
-  }
+  // EXPERIMENT: distinctness requirement removed (see doc comment above).
+  // OLD:
+  // // distinct(w1,...,wl) needs at least two elements (Kind::DISTINCT
+  // // requires arity >= 2); a length-1 pattern is a self-loop with nothing
+  // // else to be distinct from.
+  // if (l >= 2)
+  // {
+  //   conjuncts.push_back(nm->mkNode(Kind::DISTINCT, ws));
+  // }
   conjuncts.push_back(instantiateBody(boundVars, body, ws));
 
   Node conc = conjuncts.size() == 1 ? conjuncts[0]
@@ -1945,6 +1951,12 @@ void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
  * w1,...,wl (l = boundVars' length). Fires unconditionally for every such
  * walk found: see fireAcyclicPatternDown for why this remains sound without
  * gating on provable disequality.
+ *
+ * EXPERIMENT: this rule no longer requires w1,...,wl to be provably distinct
+ * before firing (was previously an antecedent conjunct -- see the
+ * commented-out block in fireAcyclicPatternDown). It now fires on any closed
+ * walk, simple or not, matching the up-direction's removal of distinct(...)
+ * in applyInstCyclePatternRule.
  */
 void TheorySetsRels::checkAcyclicPatternDown()
 {
@@ -2090,17 +2102,19 @@ void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
     }
     repsMap.emplace(wRep, ws[i]);
   }
-  // distinct(w1,...,wl): DISTINCT requires at least two children.
-  if (repsMap.size() >= 2)
-  {
-    std::vector<Node> distinctReps;
-    distinctReps.reserve(repsMap.size());
-    for (const auto& r : repsMap)
-    {
-      distinctReps.push_back(r.first);
-    }
-    reasonConjuncts.push_back(nm->mkNode(Kind::DISTINCT, distinctReps));
-  }
+  // EXPERIMENT: distinctness requirement removed (see doc comment above).
+  // OLD:
+  // // distinct(w1,...,wl): DISTINCT requires at least two children.
+  // if (repsMap.size() >= 2)
+  // {
+  //   std::vector<Node> distinctReps;
+  //   distinctReps.reserve(repsMap.size());
+  //   for (const auto& r : repsMap)
+  //   {
+  //     distinctReps.push_back(r.first);
+  //   }
+  //   reasonConjuncts.push_back(nm->mkNode(Kind::DISTINCT, distinctReps));
+  // }
 
   Node reason = reasonConjuncts.size() == 1
                     ? reasonConjuncts[0]
