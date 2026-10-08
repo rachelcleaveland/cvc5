@@ -411,6 +411,17 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     SET_AND_NOTIFY_VAL_SYM(
         prop, satSolver, options::SatSolverMode::MINISAT, "incremental");
   }
+  if (opts.sets.setsExp && !opts.prop.satSolverWasSetByUser)
+  {
+    // The extended sets symbols (set.universe, set.complement) are in
+    // practice used by relational problems, e.g. memory-model encodings, whose
+    // (finite-model) search is driven by the justification decision heuristic
+    // and by the relational solver's lemmas. On such problems this heuristic
+    // is effective only with MiniSat: models that MiniSat finds in seconds are
+    // not found by CaDiCaL within minutes, with either decision heuristic.
+    SET_AND_NOTIFY_VAL_SYM(
+        prop, satSolver, options::SatSolverMode::MINISAT, "sets-exp");
+  }
   if (opts.quantifiers.sygusInstWasSetByUser)
   {
     if (opts.quantifiers.sygusInst && isSygus(opts))
