@@ -205,6 +205,16 @@ class TheorySetsRels : protected EnvObj
 
   /** Mapping from acyclic relation representative to its explanation(s) */
   std::map<Node, std::vector<Node>> d_acyclic_cache;
+  /** (R, S) pairs for which the inclusion / rotation anchor lemmas were sent */
+  std::set<std::pair<Node, Node>> d_anchorInclusionSent;
+  std::set<std::pair<Node, Node>> d_anchorRotationSent;
+  // EXPERIMENT: ((R, S), concreteLen) triples for which the branching anchor
+  // lemma (the fixed replacement for the old, unsound "rotation" lemma -- see
+  // the comment on applyAcyclicAnchorRules) has already been sent. Keeping
+  // concreteLen in the key, rather than reusing d_anchorRotationSent's (R, S)
+  // key, lets the lemma be resent (soundly) if the witness's model-determined
+  // length changes across last-call checks.
+  std::set<std::pair<std::pair<Node, Node>, size_t>> d_anchorBranchSent;
 
   /** Mapping from acyclic relation representatives to the cycle-witness
    * elements created so far (s1,...,s_cnt) and the symbolic eventual length of
@@ -215,6 +225,15 @@ class TheorySetsRels : protected EnvObj
                      std::pair<std::vector<Node>, Node>,
                      VectorNodeHashFunction>
       d_cycle_sequences;
+
+  /**
+   * Mapping between a relation representative and the constraints
+   * (rel.is-functional R) that are asserted (positively) for a relation R in
+   * its equivalence class.
+   */
+  std::map<Node, std::vector<Node>> d_functional_cache;
+  /** (rel.is-functional R) atoms asserted false for which we sent a witness */
+  std::unordered_set<Node> d_notFunctionalSent;
 
   /**
    * Transitive closure (TC) graphs.
@@ -338,6 +357,18 @@ class TheorySetsRels : protected EnvObj
   void applyJoinImageRule(Node mem_rep, Node rel_rep, Node exp);
   void applyIdenRule(Node mem_rep, Node rel_rep, Node exp);
   /**
+   * Apply the rules for the asserted constraints (rel.is-functional R), see
+   * the description of InferenceId::SETS_RELS_FUNCTIONAL and the option
+   * --rels-functional-mode. For each representative of a relation with such
+   * a constraint, the rules are applied to its asserted members.
+   */
+  void applyFunctionalRules();
+  /**
+   * Apply the witness rule for (not (rel.is-functional R)), see
+   * InferenceId::SETS_RELS_NOT_FUNCTIONAL. Sent once per constraint.
+   */
+  void applyNotFunctionalRule(Node atom);
+  /**
    * Process a membership in a transitive closure term.
    *
    * @param mem a tuple (a, b) asserted to be a member of rel_rep
@@ -360,6 +391,40 @@ class TheorySetsRels : protected EnvObj
    * from a to b.
    */
   void applyTCRule(Node mem, Node rel, Node rel_rep, Node exp);
+  /**
+   * The TCLOSURE_DOWN case split for the closure membership exp of tc_rel
+   * (extracted from applyTCRule so that it can also be sent at last call in
+   * the lazy mode, see --rels-tc-down-lazy).
+   */
+  void sendTCDownSplit(Node tc_rel, Node exp);
+  /**
+   * Closure induction (--rels-tc-subset). For the closure membership exp of
+   * tc_rel = (rel.tclosure R), infer that the pair is also a member of every
+   * transitive superset S of R known in the current context: TC(R) is the
+   * least transitive relation containing R, so R subset S and S transitive
+   * entail TC(R) subset S. Candidates S are
+   *   - (rel.tclosure X) for every closure term in the context such that R is
+   *     syntactically included in it (isSyntacticallyInTC);
+   *   - every P with R subset P asserted (as the rewritten equality
+   *     (set.union R P) = P) whose class contains a product, a closure or an
+   *     identity term, or for which P;P subset P is asserted;
+   *   - R itself when R;R subset R is asserted.
+   */
+  void applyTCSubsetRules(Node tc_rel, Node exp);
+  /**
+   * Returns true if the equivalence class of pRep (with chosen term p) is
+   * known to be transitive: it contains a product, closure or identity term,
+   * or (rel.join p p) subset p is asserted. The equalities that justify this
+   * are appended to reason.
+   */
+  bool isTransitiveClass(Node pRep, Node p, std::vector<Node>& reason);
+  /** Whether the TC checks run at last-call effort (lazy TC down). */
+  bool d_tcLastCall = false;
+  /** Self-loop witnesses (--rels-acyclic-self-loop): relation list -> s. */
+  std::map<std::vector<Node>, Node> d_selfLoops;
+  /** Negated acyclicity constraints already flattened
+   * (--rels-acyclic-flatten-union). */
+  std::set<Node> d_flattenSent;
   /**
    * Sends a conflict for a transitive-closure membership mem_rep in
    * tc_rel that is not reachable via members of tc_rel[0]. Introduces no
@@ -409,6 +474,28 @@ class TheorySetsRels : protected EnvObj
    * reached --rels-acyclic-unroll-max are reported as incomplete instead.
    */
   void doCycleInference();
+  /**
+   * Constrain the cycle witness (rels, s) of a negated acyclicity constraint
+   * (acyc_exp) with the asserted positive acyclicity constraints: see the
+   * comment at the definition.
+   *
+   * EXPERIMENT: concreteLen, if non-negative, is the witness's full,
+   * model-determined length (s.size() == concreteLen); the branching anchor
+   * lemma (the sound replacement for the old "rotation" lemma) is only sent
+   * when this is known, since it needs to range over every edge of the
+   * witness. Callers that cannot supply a concrete length (full-effort calls,
+   * where the model value of the symbolic length is not yet available) should
+   * pass -1, in which case only the (unconditionally sound) inclusion lemma
+   * is considered.
+   */
+  void applyAcyclicAnchorRules(const std::vector<Node>& rels,
+                               const std::vector<Node>& s,
+                               Node acyc_exp,
+                               int64_t concreteLen = -1);
+  /** Flatten the set.union operands of r into parts. */
+  void collectUnionOperands(Node r, std::vector<Node>& parts);
+  /** Is x a subset of TC(s) in every interpretation, by its shape? */
+  bool isSyntacticallyInTC(Node x, Node s);
   /**
    * Called at the end of a full-effort check. For each transitive closure
    * term TC(r) with a graph in d_tcr_tcGraph, computes the transitive
