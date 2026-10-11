@@ -3918,6 +3918,15 @@ enum ENUM(Kind)
   /**
    * Relation reflexive closure.
    *
+   * \rst
+   * ``(rel.rclosure R)`` is :math:`R` together with the pairs
+   * :math:`(x, x)` for every :math:`x` in the domain or range of the binary
+   * relation :math:`R`, e.g., :math:`\{(1, 2)\}` gives
+   * :math:`\{(1, 1), (1, 2), (2, 2)\}`. The solver only supports it if its
+   * argument is built from the empty set, singletons and unions, which
+   * rewriting eliminates; otherwise it may answer unknown.
+   * \endrst
+   *
    * - Arity: ``1``
    *
    *   - ``1:`` Term of relation Sort
@@ -3934,6 +3943,12 @@ enum ENUM(Kind)
   EVALUE(RELATION_RCLOSURE),
   /**
    * Relation reflexive transitive closure.
+   *
+   * \rst
+   * ``(rel.rtclosure R)`` is the union of ``(rel.rclosure R)`` and
+   * ``(rel.tclosure R)``, e.g., :math:`\{(1, 2), (2, 3)\}` gives
+   * :math:`\{(1, 1), (1, 2), (1, 3), (2, 2), (2, 3), (3, 3)\}`.
+   * \endrst
    *
    * - Arity: ``1``
    *
@@ -3956,7 +3971,9 @@ enum ENUM(Kind)
    * ``(rel.cyclic R)`` holds iff :math:`(x, x) \in R^+` for some :math:`x`,
    * where :math:`R^+` is the transitive closure of the binary relation
    * :math:`R`, i.e., iff :math:`R` has a cycle. Acyclicity of :math:`R` is
-   * ``(not (rel.cyclic R))``.
+   * ``(not (rel.cyclic R))``. For example, ``(rel.cyclic (set.union R S))``
+   * holds for :math:`R = \{(a, b)\}` and :math:`S = \{(b, a)\}`, while
+   * ``(rel.cyclic R)`` and ``(rel.cyclic S)`` do not.
    * \endrst
    *
    * - Arity: ``1``

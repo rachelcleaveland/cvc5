@@ -605,6 +605,9 @@ enum class InferenceId
   SETS_RELS_JOIN_IMAGE_UP,
   SETS_RELS_JOIN_SPLIT_1,
   SETS_RELS_JOIN_SPLIT_2,
+  // (x, z) in (rel.join A B) not explained by the known members of A and B
+  // (last call, --rels-acyclic-hammer), e.g. (a, c) in A;B /\ A = {(a, b)} /\
+  // B = {(d, c)} /\ distinct(a, b, c, d) => false
   SETS_RELS_JOIN_GROUNDING_CONFLICT,
   SETS_RELS_TABLE_JOIN_UP,
   SETS_RELS_TABLE_JOIN_DOWN,
@@ -612,13 +615,27 @@ enum class InferenceId
   SETS_RELS_PRODUCT_SPLIT,
   SETS_RELS_TCLOSURE_UP,
   SETS_RELS_TCLOSURE_DOWN,
+  // the same for (a, b) in TC(R), e.g.
+  // (a, c) in TC(R) /\ R = {(a, b)} /\ distinct(a, b, c) => false
   SETS_RELS_TCLOSURE_GROUNDING_CONFLICT,
+  // the minimality and anchor lemmas of the cycle witness of (rel.cyclic R),
+  // e.g. for the witness s1 -> s2 -> s3 -> s1 of R1 U R2:
+  // (s1, s3) not in TC(R1)
   SETS_RELS_CONTR_MINIMAL,
+  // (a, b) in TC(R) /\ (not (rel.cyclic R)) => a != b
   SETS_RELS_ACYCLIC_DOWN,
+  // (rel.cyclic (R1 U ... U Rk)) => 1 < l, where l is the length of a fresh
+  // cycle witness s1, ..., sl with sl = s1
   SETS_RELS_INST_CYCLE,
+  // (rel.cyclic R) /\ i <= l => i < l \/ (l = i /\ si = s1)
   SETS_RELS_SPLIT_CYCLE_LEN,
+  // (rel.cyclic (R1 U ... U Rk)) /\ i < l =>
+  //   (si, s(i+1)) in TC(R1) \/ ... \/ (si, s(i+1)) in TC(Rk)
   SETS_RELS_UNROLL_CYCLE,
+  // closure induction: (a, b) in TC(R) /\ R subset S /\ S transitive =>
+  // (a, b) in S, e.g. (a, b) in TC(R) /\ R subset A x B => (a, b) in A x B
   SETS_RELS_TCLOSURE_SUBSET,
+  // (rel.cyclic R) => (s, s) in TC(R) for a fresh s, R not a union
   SETS_RELS_ACYCLIC_SELF_LOOP,
   SETS_RELS_TRANSPOSE_EQ,
   SETS_RELS_TRANSPOSE_REV,

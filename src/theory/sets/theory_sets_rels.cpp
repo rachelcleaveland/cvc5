@@ -144,10 +144,9 @@ void TheorySetsRels::check()
       // still applied here for every asserted TC membership.
       if (kind_terms.find(Kind::RELATION_TCLOSURE) != kind_terms.end())
       {
-        std::vector<Node>& tc_terms = kind_terms[Kind::RELATION_TCLOSURE];
-        for (unsigned int j = 0; j < tc_terms.size(); j++)
+        for (const Node& tc_term : kind_terms[Kind::RELATION_TCLOSURE])
         {
-          applyAcyclicDownRule(mem, tc_terms[j], exp);
+          applyAcyclicDownRule(mem, tc_term, exp);
         }
       }
       if (kind_terms.find(Kind::RELATION_JOIN_IMAGE) != kind_terms.end())
@@ -284,13 +283,12 @@ void TheorySetsRels::checkTransitiveClosureLastCall(bool cardinalityUsed)
       continue;
     }
     std::vector<Node>& tc_terms = kind_terms[Kind::RELATION_TCLOSURE];
-    for (unsigned int i = 0; i < m_it->second.size(); i++)
+    for (size_t i = 0, nmems = m_it->second.size(); i < nmems; ++i)
     {
       Node mem = d_rReps_memberReps_cache[rel_rep][i];
       Node exp = d_rReps_memberReps_exp_cache[rel_rep][i];
-      for (unsigned int j = 0; j < tc_terms.size(); j++)
+      for (const Node& tc_rel : tc_terms)
       {
-        Node tc_rel = tc_terms[j];
         ensureTCGraphBuilt(tc_rel);
         if (!isTCReachable(mem, tc_rel))
         {
@@ -345,13 +343,12 @@ void TheorySetsRels::checkJoinLastCall(bool cardinalityUsed)
       continue;
     }
     std::vector<Node>& join_terms = kind_terms[Kind::RELATION_JOIN];
-    for (unsigned int i = 0; i < m_it->second.size(); i++)
+    for (size_t i = 0, nmems = m_it->second.size(); i < nmems; ++i)
     {
       Node mem = d_rReps_memberReps_cache[rel_rep][i];
       Node exp = d_rReps_memberReps_exp_cache[rel_rep][i];
-      for (unsigned int j = 0; j < join_terms.size(); j++)
+      for (const Node& join_rel : join_terms)
       {
-        Node join_rel = join_terms[j];
         if (!isJoinReachable(mem, join_rel))
         {
           if (cardinalityUsed)
@@ -514,29 +511,17 @@ void TheorySetsRels::collectRelsInfo()
         {
           if (!is_true_eq)
           {
-            // (not (rel.cyclic R)), i.e., R is acyclic. Key by the
-            // representative of R so that the acyclic down rule (a membership
-            // in TC(R)) finds it directly. The cache holds the literal
-            // (not (rel.cyclic R)).
+            // (not (rel.cyclic u)): u is acyclic. The literal is cached under
+            // the representative of u, where the acyclic-down rule looks for
+            // it when it processes a membership in TC(u).
             Node u = eqc_node[0];
             d_acyclic_cache[getRepresentative(u)].push_back(eqc_node.negate());
-
-            // The acyclic-down rule contradicts reflexive memberships in TC(u).
-            // Such memberships are only ever materialized if (a) u itself is
-            // a registered relation whose members are populated in the
-            // solver's data structures, and (b) (rel.tclosure u) is processed
-            // by the TC solver. If the user never mentions u and/or
-            // (rel.tclosure u), nothing registers them, the cycle is never
-            // derived, and we wrongly answer sat.
-            //
-            // Solution: emit the vacuous lemma (not (rel.cyclic u)) =>
-            // u <= TC(u) to register u and TC(u) as terms.
-            //
-            // NOTE: the consequent must SURVIVE rewriting to actually register
-            // the terms. A reflexive equality TC(u) = TC(u) does not -- the
-            // lemma path rewrites it to true before the term registers, so it
-            // registers nothing. subset(u, TC(u)) has no such
-            // collapsing rewrite, so the terms survive into the registered set.
+            // The acyclic-down rule only sees the memberships of TC(u) if u
+            // and TC(u) are registered terms, which they are not if the input
+            // does not mention TC(u): e.g. for (not (rel.cyclic u)) with
+            // (a, b) and (b, a) in u, the cycle would go unnoticed. The lemma
+            // (not (rel.cyclic u)) => u subset TC(u), which is valid and is
+            // not rewritten away (unlike TC(u) = TC(u)), registers them.
             Node tc = nodeManager()->mkNode(Kind::RELATION_TCLOSURE, u);
             Node reg = nodeManager()->mkNode(Kind::SET_SUBSET, u, tc);
             sendInfer(reg, InferenceId::SETS_RELS_ACYCLIC_DOWN, eqc_node.negate());
@@ -1159,24 +1144,19 @@ void TheorySetsRels::sendTCDownSplit(Node tc_rel, Node exp)
  *     -------------------------------------------------
  *                       (a,b) IN S
  *
- * TC(R) is the least transitive relation that contains R, so every transitive
- * superset of R contains TC(R): by induction on the length of an R-path from
- * a to b, every prefix of the path is in S. Three sources of transitive
- * supersets are recognised:
- *  (1) S = TC(X) with R syntactically included in TC(X) (e.g. R = TC(X) ∩ Y):
- *      monotonicity of the closure, TC(R) SUBSET TC(X).
- *  (2) S with R SUBSET S asserted, i.e. the rewritten (set.union R S) = S holds
- *      in the current context, and S known to be transitive because its
- *      equivalence class contains a product A x B (so TC(R) SUBSET A x B is a
- *      typing rule: the first and last edges of a path are in A x B), a closure
- *      or an identity relation, or J;J^T with (rel.is-functional J) asserted,
- *      or because (rel.join S S) SUBSET S is asserted.
- *  (3) S = R when (rel.join R R) SUBSET R is asserted (R transitive, so
- *      TC(R) = R).
- * These rules do not introduce fresh elements. They replace, for the
- * memberships they apply to, an unbounded descent of TCLOSURE_DOWN splits
- * (each of which introduces two fresh elements and another closure
- * membership) by one lemma.
+ * TC(R) is the least transitive relation containing R (by induction on the
+ * length of an R-path from a to b, every prefix of the path is in S). The
+ * supersets S, numbered as in the code below:
+ *  (1) S = TC(X), R syntactically in TC(X), e.g. R = TC(po) ∩ loc, S = TC(po);
+ *  (2) R SUBSET S asserted (the rewritten (set.union R S) = S) and S
+ *      transitive (isTransitiveClass), e.g. S = A x B or S = J;J^T with
+ *      (rel.is-functional J);
+ *  (3) S = R, R transitive, e.g. (rel.join R R) SUBSET R: then TC(R) = R;
+ *  (4) S = R, R = A x B or R SUBSET A x B with A ∩ B = empty: no two edges
+ *      compose, so TC(R) = R, e.g. fr from reads to writes;
+ *  (2a) S = X for R = X ∩ Y or R = X \ Y, X transitive.
+ * No fresh element is introduced: where a rule applies, one lemma replaces
+ * an unbounded sequence of TCLOSURE_DOWN splits.
  */
 void TheorySetsRels::applyTCSubsetRules(Node tc_rel, Node exp)
 {
@@ -1682,9 +1662,8 @@ bool TheorySetsRels::isJoinReachable(Node mem_rep, Node join_rel)
   Node r1_rep = getRepresentative(r1);
   Node r2_rep = getRepresentative(r2);
 
-  unsigned int s1_len = r1.getType().getSetElementType().getTupleLength();
-  unsigned int tup_len =
-      join_rel.getType().getSetElementType().getTupleLength();
+  size_t s1_len = r1.getType().getSetElementType().getTupleLength();
+  size_t tup_len = join_rel.getType().getSetElementType().getTupleLength();
 
   computeTupleReps(mem_rep);
   std::vector<Node>& mem_reps = d_tuple_reps[mem_rep];
@@ -1701,7 +1680,7 @@ bool TheorySetsRels::isJoinReachable(Node mem_rep, Node join_rel)
     // r1_mem must agree with mem_rep on the join_rel[0]-side prefix (all of
     // r1_mem's components except its last, the candidate shared element).
     bool prefixMatches = true;
-    for (unsigned int k = 0; k + 1 < s1_len; k++)
+    for (size_t k = 0; k + 1 < s1_len; ++k)
     {
       if (r1_mem_reps[k] != mem_reps[k])
       {
@@ -1716,7 +1695,7 @@ bool TheorySetsRels::isJoinReachable(Node mem_rep, Node join_rel)
     Node shared_cand = r1_mem_reps[s1_len - 1];
     std::vector<Node> r2_pattern;
     r2_pattern.push_back(shared_cand);
-    for (unsigned int k = s1_len - 1; k < tup_len; k++)
+    for (size_t k = s1_len - 1; k < tup_len; ++k)
     {
       r2_pattern.push_back(mem_reps[k]);
     }
@@ -2267,12 +2246,6 @@ void TheorySetsRels::applyTransposeRule(Node tp_rel, Node tp_rel_rep, Node exp)
             reason);
 }
 
-/*
- * RELATION_INST_CYCLE:   RELATION_CYCLIC(x)      (x,_,_) NOT IN C
- *                         ---------------------------------------------------------
- *                                              C := C U {(x,<s1>,l)}
- * for s1 and l fresh variables.
- */
 Node TheorySetsRels::cyclicAtom(const std::vector<Node>& rels) const
 {
   auto it = d_cycleAtoms.find(rels);
@@ -2291,6 +2264,15 @@ Node TheorySetsRels::mkRelUnion(const std::vector<Node>& rels)
   return rewrite(u);
 }
 
+/*
+ * RELATION_INST_CYCLE, for an asserted (rel.cyclic R) and fresh s, s1, l:
+ *   R not a union:      (rel.cyclic R) => (s, s) in TC(R)
+ *   R = R1 U ... U Rk:  (rel.cyclic R) => 1 < l
+ * In the second case s1, ..., sl with sl = s1 is the cycle witness, unrolled
+ * one element per check by RELATION_UNROLL_CYCLE. Example: (rel.cyclic
+ * (rf U po)) has the witness s1 -> s2 -> ... -> sl with each edge in TC(rf)
+ * or TC(po).
+ */
 void TheorySetsRels::applyInstCycleRule(Node atom)
 {
   Assert(atom.getKind() == Kind::RELATION_CYCLIC);
@@ -2383,9 +2365,9 @@ void TheorySetsRels::applyInstCycleRule(Node atom)
 }
 
 /*
- * RELATION_SPLIT_CYCLE_LEN:   (x,<s_1,...,s_cnt>,l) IN C     cnt <= l IN S
- *                     ------------------------------------------------------
- *                      S := S U {cnt < l}  ||  C := C U {s_1 = s_cnt, l = cnt}
+ * RELATION_SPLIT_CYCLE_LEN, for the witness s1, ..., s_cnt of (rel.cyclic R):
+ *   (rel.cyclic R) /\ cnt <= l  =>  cnt < l \/ (l = cnt /\ s_cnt = s1)
+ * e.g. for cnt = 3: the witness has more elements, or it is s1 -> s2 -> s1.
  */
 void TheorySetsRels::applySplitCycleLenRule(const std::vector<Node>& rels,
                                             const std::vector<Node>& s,
@@ -2417,17 +2399,12 @@ void TheorySetsRels::applySplitCycleLenRule(const std::vector<Node>& rels,
 }
 
 /*
- * RELATION_UNROLL_CYCLE:
- *      ((R1,...,Rk),<s_1,...,s_cnt>,l) IN C  cnt < l IN S
- *            C' === C  \ {(R,<s_1,...,s_cnt>,l)}
- *                   U {(R,<s_1,...,s_cnt,s_{cnt+1}>,l)}
- *    ---------------------------------------------------------
- *       C := C'   S := S U {(s_cnt,s_{cnt+1}) IS_IN RELATION_TCLOSURE(R1)}
- *    || ...
- *    || C := C'   S := S U {(s_cnt,s_{cnt+1}) IS_IN RELATION_TCLOSURE(Rk)}
- *
- * A fresh (vector, l) pair is constructed and re-inserted in d_cycle_sequences,
- * since it is a context-dependent data structure.
+ * RELATION_UNROLL_CYCLE, for the witness s1, ..., s_cnt of
+ * (rel.cyclic (R1 U ... U Rk)) and a fresh s_{cnt+1}:
+ *   (rel.cyclic R) /\ cnt < l  =>
+ *     (s_cnt, s_{cnt+1}) in TC(R1) \/ ... \/ (s_cnt, s_{cnt+1}) in TC(Rk)
+ * The extended witness replaces the old one in d_cycle_sequences, which is
+ * context-dependent.
  */
 std::vector<Node> TheorySetsRels::applyUnrollCycle(
     const std::vector<Node>& rels, const std::vector<Node>& s, Node l)
@@ -2521,43 +2498,21 @@ std::vector<Node> TheorySetsRels::applyUnrollCycle(
 }
 
 /*
- * RELATION_CONTR_MINIMAL I:   ((R1,...,Rk),(s_1,...,s_cnt),l) IN C
- *                           1 <= q < r - 1 <= cnt - 1  r <= l  b IN [1,k]
- *                         ---------------------------------------
- *                           (s[q],s[r]) NOT IN RELATION_TCLOSURE(Rb)
- *
- * RELATION_CONTR_MINIMAL II:  ((R1,...,Rk),(s_1,...,s_cnt),l) IN C
- *                           1 <= q < r <= cnt  !(q == 1 and r == l)   b IN
- * [1,k]
- *                         ---------------------------------------
- *                           (s[q],s[r]) NOT IN RELATION_TCLOSURE(Rb)
- *
- * Given that the cycle (R,(s_1,...,s_cnt),l) is in C (i.e., (rel.cyclic R) is
- * asserted), and by definition (s_1,...,s_cnt) is a minimal cycle in R1 U ... U Rk, no
- * "shortcut" edge may exist between two non-adjacent nodes of the cycle, i.e.
- * we forbid (s_q,s_r) IN TC(R) for every 1 <= q < r - 1 <= cnt - 1. Also, we
- * forbid s_q = s_r for every 1 <= q < r <= cnt, except for the one allowed by
- * the cycle definition: q = 1  and r = cnt.
- *
- * RELATION_CONTR_MINIMAL III (option --rels-acyclic-backward-chords):
- *                           ((R1,...,Rk),(s_1,...,s_cnt),l) IN C
- *                           1 <= q < r <= cnt   b IN [1,k]
- *                           (r < l and l > r - q + 2) or (r = l and q != 2)
- *                         ---------------------------------------
- *                           (s[r],s[q]) NOT IN RELATION_TCLOSURE(Rb)
- *
- * Recall that the witness has l elements with s_l = s_1, i.e. l - 1 edges
- * (s_i, s_{i+1}). A backward edge (s_r, s_q) with r < l closes the sub-cycle
- * s_q, ..., s_r, s_q of r - q + 1 edges, which is shorter than the witness iff
- * r - q + 1 < l - 1. Notably the reverse of any edge (r = q + 1) is excluded
- * as soon as l >= 4. For r = l the edge is (s_1, s_q): a self-loop if q = 1
- * (shorter iff l >= 3), the first edge itself if q = 2, and otherwise the
- * cycle s_1, s_q, ..., s_{l-1}, s_1 of l - q + 1 < l - 1 edges. Backward
- * chords are what lets a totality axiom on one of the relations (e.g.,
- * program order within a thread) bound the length of the witness: two cycle
- * elements that the axiom relates in either direction must be adjacent. They
- * are optional because they slow down finite model finding on satisfiable
- * problems.
+ * RELATION_CONTR_MINIMAL: the witness s1, ..., s_cnt of (rel.cyclic (R1 U ...
+ * U Rk)), of length l with s_l = s1 (l - 1 edges), is a shortest cycle of
+ * TC(R1) U ... U TC(Rk). For 1 <= q < r <= cnt, r <= l, and every Rb:
+ *   I   no chord:          (s_q, s_r) not in TC(Rb)   if q < r - 1 and
+ *                                                     (q, r) != (1, l)
+ *   II  distinct elements: s_q != s_r                 if (q, r) != (1, l)
+ *   III no backward edge closing a shorter cycle (--rels-acyclic-backward-
+ *       chords):           (s_r, s_q) not in TC(Rb)   if r < l and
+ *                          r - q + 1 < l - 1, or r = l >= 3 and q != 2
+ * Example: for the witness s1 -> s2 -> s3 -> s4 = s1 (l = 4), I gives
+ * (s1, s3) not in TC(Rb), and III gives (s3, s2) not in TC(Rb): the cycle
+ * s2 -> s3 -> s2 would have 2 edges instead of 3. Backward edges let a
+ * totality axiom on one relation (e.g. program order within a thread) bound
+ * the length of the witness: two elements it relates must be adjacent. They
+ * are optional because they slow down finite model finding.
  */
 void TheorySetsRels::applyContrMinimalRule(const std::vector<Node>& rels,
                                            const std::vector<Node>& s,
@@ -2743,32 +2698,6 @@ void TheorySetsRels::doCycleInference()
   }
 }
 
-/*
- * Use the asserted acyclicity constraints (NOT cyclic(S)) to constrain the
- * cycle witness of a cyclicity constraint. Let R = R1 U ... U Rk be the
- * relation of the witness and let NOT cyclic(S) hold for S = S1 U ... U Sm of
- * the same type. A cycle of R that used only edges of TC(S) would be a cycle
- * of TC(S), which NOT cyclic(S) forbids. Hence:
- *
- *  (1) INCLUSION: some edge of R is not in TC(S):
- *        cyclic(R) /\ NOT cyclic(S)  =>  t IN R /\ t NOT IN TC(S)
- *      for a fresh tuple t (one per pair (R,S)). This usually admits a local
- *      refutation that does not depend on the length of the cycle, e.g. when
- *      every edge of R is a path of S, or when the edges of R outside S are
- *      excluded by the templates of the benchmark.
- *
- *  (2) BRANCH: once the candidate model gives the length of the witness,
- *      l = len (so that every edge of the witness can be named, with
- *      s_len = s_1), one of its edges is not in TC(S):
- *        cyclic(R) /\ NOT cyclic(S) /\ l = len  =>
- *          (s_1,s_2) NOT IN TC(S)  \/  (s_2,s_3) NOT IN TC(S)  \/  ...  \/
- *          (s_{len-1},s_len) NOT IN TC(S)
- *      This is the argument of INCLUSION applied to the edges of the witness:
- *      with l = len they form the whole cycle. The premise l = len is needed,
- *      since for a longer witness the listed edges are only a part of it. The
- *      lemma is sent at last call (checkAcyclicityLastCall), and at once for a
- *      self-loop witness.
- */
 void TheorySetsRels::collectUnionOperands(Node r, std::vector<Node>& parts)
 {
   if (r.getKind() == Kind::SET_UNION)
@@ -2818,6 +2747,21 @@ bool TheorySetsRels::isSyntacticallyInTC(Node x, Node s)
   }
 }
 
+/*
+ * Anchor rules, for an asserted (rel.cyclic R) with witness s and every
+ * asserted (not (rel.cyclic S)): a cycle of R whose edges all lie in TC(S)
+ * would be a cycle of S, so some edge of the cycle is not in TC(S).
+ *  INCLUSION:  (rel.cyclic R) /\ (not (rel.cyclic S)) =>
+ *                t in R' /\ t not in TC(S)
+ *    for a fresh pair t, where R' is the union of the operands of R that are
+ *    not syntactically in TC(S); if there is none, the lemma is false.
+ *    Example: (rel.cyclic (rf U po)), (not (rel.cyclic po)) give t in rf and
+ *    t not in TC(po).
+ *  BRANCH:     (rel.cyclic R) /\ (not (rel.cyclic S)) /\ l = N =>
+ *                (s1, s2) not in TC(S) \/ ... \/ (s_{N-1}, s_N) not in TC(S)
+ *    sent at last call, when the candidate model gives l = N, so that the
+ *    listed edges are the whole cycle (s_N = s1); at once for a self-loop.
+ */
 void TheorySetsRels::applyAcyclicAnchorRules(const std::vector<Node>& rels,
                                              const std::vector<Node>& s,
                                              Node acyc_exp,
