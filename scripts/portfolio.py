@@ -144,6 +144,12 @@ EXPECTED = {
     "plsc-1-th": "unsat", "plsc-1-th-just-rf": "unsat", "plsc-1-th-no-ltts": "sat",
     "plsc-2-th": "unsat", "plsc-2-th-just-rf": "unsat",
     "tso-1-th": "unsat", "tso-1-th-just-rf": "unsat", "tso-1-th-no-ltts": "sat",
+    # tso-2-th and tso-2-th-just-rf (added 2026-10-10) have the same shape as
+    # the other *-th files, the templates asserted and an execution the model
+    # forbids requested, so unsat is the expected answer by construction; it
+    # has not yet been confirmed by a solver run (every configuration timed
+    # out at 120 s on the pr-9 build).
+    "tso-2-th": "unsat", "tso-2-th-just-rf": "unsat",
 }
 
 HARD_TIMEOUT_GRACE = 30.0  # seconds after --tlimit before a process is killed
