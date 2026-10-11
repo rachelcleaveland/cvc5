@@ -1,11 +1,55 @@
 This file contains a summary of important user-visible changes.
 
-cvc5 1.4.1 prerelease
-=====================
+cvc5 1.4.2
+==========
+
+- Adds techniques for returning "sat" when the returned candidate model
+  happens to satisfy the set of input assertions (`--model-verify`).
+
+- `set.insert` is now a binary operator, where applications with more than two
+  arguments are constructed as nested binary applications, e.g.
+  `(set.insert a b S)` is constructed as `(set.insert a (set.insert b S))`.
+  This impacts the children of such terms when inspected via the API, as well
+  as how they are printed.
+
+- The **bit-vector abstraction refinement strategy** (`--bv-abstraction`) now
+  also abstracts n-ary multiplications, i.e., `bvmul` with more than two
+  arguments, which were previously not abstracted. They are left-associated
+  into a chain of binary multiplications, each abstracted separately. (#12935)
+
+- Fixes a **refutation soundness** issue in the bit-vector rewrite rule for
+  signed comparisons of multiplications, which was incorrectly applied when
+  one operand was zero-extended and the other was sign-extended. (#13039)
+
+- Fixes a **model soundness** issue for arrays indexed by reals, where the
+  candidate model values of `to_real` terms had type Int, leading to missed
+  care pairs during theory combination. (#13040)
+
+cvc5 1.4.1
+==========
 
 - Removed support for LFSC proof output, including the
   `--proof-format-mode=lfsc` option and the `ProofFormat::LFSC` and
   `ProofRule::LFSC_RULE` API enum values.
+
+- Updated the classification of options and commands with respect to
+  `--safe-mode`. Options that only set timeouts for internal subsolver calls
+  (`--mbqi-check-timeout`, `--sub-cbqi-timeout`, `--sygus-verify-timeout`,
+  `--sygus-repair-const-timeout`, `--sygus-expr-miner-check-timeout` and
+  `--timeout-core-timeout`) are now common options. Recursive function definitions
+  (`define-fun-rec`, `define-funs-rec`) are no longer available in safe mode,
+  and pool declarations (`declare-pool`) are now only available in
+  unrestricted mode.
+
+- **C API**: Fixed several memory management issues, including dangling
+  pointers to names returned by `cvc5_sm_get_named_terms`, input parsers and
+  plugins not keeping their solver and symbol manager alive, detached proofs
+  not owning the child proofs they export, a missing check for exhausted
+  iterators in `cvc5_stats_iter_next`, and plugin checks that return `NULL` or
+  do not set the size of the returned array.
+
+- The current CPC proofs are checkable by Ethos 0.2.5
+  (see `./contrib/get-ethos-checker`).
 
 cvc5 1.4.0
 ==========
