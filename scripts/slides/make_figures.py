@@ -3,7 +3,7 @@
 
 Turns the runs.json files written by scripts/portfolio.py (<results-dir>/virtual
 and <results-dir>/real) into LaTeX fragments that relations-pr.tex \\input's
-(usage: python3 make_figures.py data/final-300s generated):
+(usage: python3 make_figures.py data/final-300s figures):
   matrix.tex   every configuration on every benchmark (virtual portfolio)
   cactus.tex   cactus plot: time on x (log), solved count on y, 300 s line
   compare.tex  virtual best versus real portfolio, per solved benchmark

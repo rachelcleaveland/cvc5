@@ -33,7 +33,7 @@
 \newcommand{\bad}[1]{\textcolor{red!70!black}{#1}}
 \newcommand{\tmo}{\textcolor{gray}{timeout}}
 \newcommand{\best}[1]{\textbf{\good{#1}}}
-\input{generated/numbers.tex}
+\input{figures/numbers.tex}
 
 \tikzset{
   box/.style={rectangle,draw,rounded corners,thick,align=center,inner sep=3pt,font=\footnotesize},
@@ -739,7 +739,7 @@
 
 \begin{frame}{Every configuration on every benchmark (virtual portfolio)}
   \centering\tiny\setlength{\tabcolsep}{2.6pt}
-  \input{generated/matrix.tex}
+  \input{figures/matrix.tex}
   \medskip
 
   {\raggedright\scriptsize \pfTimeout{} s per run. Bold: the fastest configuration, which the
@@ -751,7 +751,7 @@
 \begin{frame}{The portfolio as a cactus plot}
   \centering
   \begin{tikzpicture}
-    \input{generated/cactus.tex}
+    \input{figures/cactus.tex}
   \end{tikzpicture}\\
   \footnotesize Each curve: one configuration's solve times, sorted; cumulative count; final count at
   its right end. Virtual best: per file the fastest configuration. Real: all \pfNumConfigs{}
@@ -762,7 +762,7 @@
   \begin{columns}[T]
   \begin{column}{0.56\textwidth}
     \tiny\setlength{\tabcolsep}{3pt}
-    \input{generated/compare.tex}
+    \input{figures/compare.tex}
     \medskip
 
     \scriptsize Virtual: \pfVirtual{} of \pfTotal{}. Real: \pfReal{} of \pfTotal{}, with the same winner on
@@ -772,7 +772,7 @@
   \begin{column}{0.42\textwidth}
     \centering
     \begin{tikzpicture}
-      \input{generated/compare-bars.tex}
+      \input{figures/compare-bars.tex}
     \end{tikzpicture}\\
     \scriptsize Every real answer within \pfMaxReal{} s. plsc-2-th needs 53 s on a fast
     core, 286 s on an efficiency core.
