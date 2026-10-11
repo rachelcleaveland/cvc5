@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""ablate.py --cvc5 BIN --bench-dir D --nofmf-dir D2 --configs-file F --extra="OPTS"
+"""ablate.py --cvc5 BIN --benchmarks-dir D --configs-file F --extra="OPTS"
               --timeout S --jobs J --out OUT.json  BENCH:CONFIG ...
 
 Runs selected (benchmark, configuration) pairs, with the options of the
 configuration (from a configs file, or the built-in table of portfolio.py when
 none is given) plus the extra options, and writes the answers and times to
 OUT.json. Used to attribute a difference between two portfolio runs to an
-option.
+option. D holds the files without (set-option :finite-model-find true), as
+for portfolio.py; configurations that want finite model finding carry
+--finite-model-find in their options.
 """
 import argparse
 import json
@@ -40,8 +42,8 @@ def run(cvc5, path, opts, timeout):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cvc5", required=True)
-    ap.add_argument("--bench-dir", required=True)
-    ap.add_argument("--nofmf-dir", required=True)
+    ap.add_argument("--benchmarks-dir", "--bench-dir", dest="benchmarks_dir", required=True,
+                    help="directory of the no-FMF .smt2 files")
     ap.add_argument("--configs-file", default=None)
     ap.add_argument("--extra", default="", help="extra options, as one argument: --extra=\"--opt1 --opt2\"")
     ap.add_argument("--timeout", type=float, default=300.0)
@@ -54,9 +56,8 @@ def main():
 
     def one(pair):
         b, c = pair.split(":")
-        d = a.nofmf_dir if configs[c].get("nofmf") else a.bench_dir
         opts = list(configs[c]["opts"]) + [o for o in extra if o not in configs[c]["opts"]]
-        res, t, cmd = run(a.cvc5, os.path.join(d, b + ".smt2"), opts, a.timeout)
+        res, t, cmd = run(a.cvc5, os.path.join(a.benchmarks_dir, b + ".smt2"), opts, a.timeout)
         print("%-20s %-20s %-8s %7.2f s" % (b, c, res, t), flush=True)
         return dict(benchmark=b, config=c, result=res, time=t, cmd=cmd)
 

@@ -13,24 +13,31 @@ litmus-template benchmarks of relational-solver-benchmarks. They are not part of
 | `pr_report.py` | the charts (cactus plots with time on x, bar chart) and markdown tables of the PR description; needs matplotlib |
 | `acyclic_to_cyclic.py` | converts SMT-LIB files from `rel.acyclic` to `rel.cyclic` |
 
-Requirements: python3 (>= 3.8) and git; matplotlib for `pr_report.py`. Every command below runs
-from the root of the cvc5 checkout.
+Requirements: python3 (>= 3.8); git unless `--cvc5` and `--benchmarks-dir` are both given;
+matplotlib for `pr_report.py`. Every command below runs from the root of the cvc5 checkout.
 
 ## The configurations
 
-| name | options (noFMF: the file without `:finite-model-find`) |
+Every configuration runs the files **without** `(set-option :finite-model-find true)`
+(`benchmarks-ltts-nofmf` of the benchmark repository, or `benchmarks-ltts` once its files no
+longer contain the line). Configurations that want finite model finding pass
+`--finite-model-find` on the command line, which cvc5 treats exactly like the option in the
+file. The script refuses files that still contain the line.
+
+| name | options |
 |---|---|
-| default | as in the file |
-| fmf-unsat (FMF) | `--e-matching --inst-when=full-delay --rels-acyclic-anchor=inclusion --rels-acyclic-backward-chords` |
+| default | `--finite-model-find` |
+| fmf-unsat (FMF) | `--finite-model-find --e-matching --inst-when=full-delay --rels-acyclic-anchor=inclusion --rels-acyclic-backward-chords` |
 | nofmf-unsat (noFMF) | `--rels-acyclic-anchor=inclusion --inst-when=full-delay --rels-acyclic-backward-chords` |
-| stoponly | `--decision=stoponly` |
+| stoponly | `--finite-model-find --decision=stoponly` |
 | fmf-unsat-rules (FMF+R) | FMF + R + `--rels-tc-down-lazy` |
 | nofmf-unsat-rules (noFMF+R) | noFMF + R + `--rels-tc-down-lazy` |
 | nofmf-unsat-hammer (noFMF+H) | noFMF + R + `--rels-acyclic-hammer` |
 
 R = `--prenex-quant=none --rels-tc-subset`. A different set can be
-given with `--configs-file` (JSON: `{name: {"opts": [...], "nofmf": bool, "desc": "..."}}`)
-and a subset with `--configs`; `--benchmarks` restricts the files.
+given with `--configs-file` (JSON: `{name: {"opts": [...], "desc": "..."}}`)
+and a subset with `--configs`; `--benchmarks` restricts the files. Before any run the
+script checks every configuration's options against the binary and stops if one is rejected.
 
 ## Reproducing the results of #9
 
@@ -43,10 +50,13 @@ python3 scripts/portfolio.py --cvc5 build/bin/cvc5 --workdir portfolio-work \
 ```
 
 The benchmarks are cloned into `portfolio-work/relational-solver-benchmarks` at the head of
-relational-solver-benchmarks#2 (the `rel.cyclic` files). `--jobs 6` runs six virtual runs at a
-time (the default, 1, runs them strictly one after another, which takes longer but gives
-contention-free times). Without `--cvc5` the script clones and builds this branch in the work
-directory.
+relational-solver-benchmarks#2 (the `rel.cyclic` files). To use an existing checkout or a
+plain directory of files instead, without any git access, add
+`--benchmarks-dir /path/to/benchmarks-ltts-nofmf` (the directory of no-FMF files, or the
+repository root). `--jobs 6` runs six virtual runs at a time (the default, 1, runs them
+strictly one after another, which takes longer but gives contention-free times). Without
+`--cvc5` the script clones and builds this branch in the work directory; `--cvc5 build/bin`
+(the directory) works as well as the binary.
 
 **2. #8 and #7 (`rel.acyclic`).** Build their branches separately, then run them on the files
 of relational-solver-benchmarks#1, with the configurations that include
@@ -77,7 +87,7 @@ always uses on the pairs that differ:
 ```sh
 B=portfolio-work-acyclic/relational-solver-benchmarks
 python3 scripts/ablate.py --cvc5 /path/to/pr8/build/bin/cvc5 \
-    --bench-dir $B/benchmarks-ltts --nofmf-dir $B/benchmarks-ltts-nofmf \
+    --benchmarks-dir $B/benchmarks-ltts-nofmf \
     --configs-file scripts/configs-acyclic.json \
     --extra="--rels-acyclic-flatten-union --rels-acyclic-self-loop" \
     --timeout 300 --jobs 6 --out results/ablate.json \
