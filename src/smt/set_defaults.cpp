@@ -411,7 +411,7 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     SET_AND_NOTIFY_VAL_SYM(
         prop, satSolver, options::SatSolverMode::MINISAT, "incremental");
   }
-  if (opts.sets.setsExp && !opts.prop.satSolverWasSetByUser)
+  if (opts.sets.setsExp && !opts.prop.satSolverWasSetByUser && !isSygus(opts))
   {
     // The extended sets symbols (set.universe, set.complement) are in
     // practice used by relational problems, e.g. memory-model encodings, whose
@@ -419,6 +419,8 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     // and by the relational solver's lemmas. On such problems this heuristic
     // is effective only with MiniSat: models that MiniSat finds in seconds are
     // not found by CaDiCaL within minutes, with either decision heuristic.
+    // Not for problems recast as sygus (abducts, interpolants): there MiniSat
+    // answers unsat wrongly on regress0/sets/proj-issue664-card-universe-bag.
     SET_AND_NOTIFY_VAL_SYM(
         prop, satSolver, options::SatSolverMode::MINISAT, "sets-exp");
   }
