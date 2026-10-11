@@ -1617,53 +1617,56 @@ void TheorySetsRels::applyJoinGroundingConflict(Node mem_rep,
                       << " and explanation = " << exp << std::endl;
 
   NodeManager* nm = nodeManager();
+  // the components of a tuple with their representatives
+  std::map<Node, Node> compMap;
+  std::set<Node> compReps;
+  auto addComponents = [&](const Node& tup) {
+    for (size_t i = 0, n = tup.getType().getTupleLength(); i < n; i++)
+    {
+      Node t = TupleUtils::nthElementOfTuple(tup, i);
+      Node r = getRepresentative(t);
+      compMap.emplace(t, r);
+      compReps.insert(r);
+    }
+  };
+  // the set of the currently known members of rel
+  auto knownValue = [&](Node rel) {
+    Node value;
+    MEM_IT mem_it = d_rReps_memberReps_cache.find(getRepresentative(rel));
+    if (mem_it != d_rReps_memberReps_cache.end())
+    {
+      for (const Node& m : mem_it->second)
+      {
+        addComponents(m);
+        Node singleton = nm->mkNode(Kind::SET_SINGLETON, m);
+        value = value.isNull() ? singleton
+                               : nm->mkNode(Kind::SET_UNION, value, singleton);
+      }
+    }
+    return value.isNull() ? d_treg.getEmptySet(rel.getType()) : value;
+  };
   Node r1 = join_rel[0];
   Node r2 = join_rel[1];
-  Node r1_rep = getRepresentative(r1);
-  Node r2_rep = getRepresentative(r2);
-
-  // Build the set containing exactly r1's currently-known positive
-  // members.
-  Node rel1_Value;
-  MEM_IT mem_it = d_rReps_memberReps_cache.find(r1_rep);
-  if (mem_it != d_rReps_memberReps_cache.end())
+  std::vector<Node> conj{exp,
+                         nm->mkNode(Kind::EQUAL, r1, knownValue(r1)),
+                         nm->mkNode(Kind::EQUAL, r2, knownValue(r2))};
+  addComponents(mem_rep);
+  // As in applyTCGroundingConflict, the elements must be distinct: otherwise
+  // a later merge of two of them (e.g. b = d for (a, c) in A;B with
+  // A = {(a, b)} and B = {(d, c)}) justifies the membership.
+  for (const auto& [t, r] : compMap)
   {
-    for (const Node& m : mem_it->second)
+    if (t != r)
     {
-      Node singleton = nm->mkNode(Kind::SET_SINGLETON, m);
-      rel1_Value = rel1_Value.isNull()
-                       ? singleton
-                       : nm->mkNode(Kind::SET_UNION, rel1_Value, singleton);
+      conj.push_back(nm->mkNode(Kind::EQUAL, t, r));
     }
   }
-  if (rel1_Value.isNull())
+  if (compReps.size() >= 2)
   {
-    rel1_Value = d_treg.getEmptySet(r1.getType());
+    conj.push_back(nm->mkNode(
+        Kind::DISTINCT, std::vector<Node>(compReps.begin(), compReps.end())));
   }
-
-  // Build the set containing exactly r2's currently-known positive
-  // members.
-  Node rel2_Value;
-  MEM_IT mem_it2 = d_rReps_memberReps_cache.find(r2_rep);
-  if (mem_it2 != d_rReps_memberReps_cache.end())
-  {
-    for (const Node& m : mem_it2->second)
-    {
-      Node singleton = nm->mkNode(Kind::SET_SINGLETON, m);
-      rel2_Value = rel2_Value.isNull()
-                       ? singleton
-                       : nm->mkNode(Kind::SET_UNION, rel2_Value, singleton);
-    }
-  }
-  if (rel2_Value.isNull())
-  {
-    rel2_Value = d_treg.getEmptySet(r2.getType());
-  }
-
-  Node reason = nm->mkNode(Kind::AND,
-                           exp,
-                           nm->mkNode(Kind::EQUAL, r1, rel1_Value),
-                           nm->mkNode(Kind::EQUAL, r2, rel2_Value));
+  Node reason = nm->mkNode(Kind::AND, conj);
 
   Trace("rels-cycles") << "JoinGroundingConflict: " << reason << " => false"
                        << std::endl;
