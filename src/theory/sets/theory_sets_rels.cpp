@@ -277,7 +277,7 @@ void TheorySetsRels::checkTransitiveClosureLastCall(bool cardinalityUsed)
        ++m_it)
   {
     Node rel_rep = m_it->first;
-    std::map<Kind, std::vector<Node>>& kind_terms = d_terms_cache[rel_rep];
+    std::map<Kind, std::vector<Node> >& kind_terms = d_terms_cache[rel_rep];
     if (kind_terms.find(Kind::RELATION_TCLOSURE) == kind_terms.end())
     {
       continue;
@@ -337,7 +337,7 @@ void TheorySetsRels::checkJoinLastCall(bool cardinalityUsed)
        ++m_it)
   {
     Node rel_rep = m_it->first;
-    std::map<Kind, std::vector<Node>>& kind_terms = d_terms_cache[rel_rep];
+    std::map<Kind, std::vector<Node> >& kind_terms = d_terms_cache[rel_rep];
     if (kind_terms.find(Kind::RELATION_JOIN) == kind_terms.end())
     {
       continue;
@@ -524,7 +524,8 @@ void TheorySetsRels::collectRelsInfo()
             // not rewritten away (unlike TC(u) = TC(u)), registers them.
             Node tc = nodeManager()->mkNode(Kind::RELATION_TCLOSURE, u);
             Node reg = nodeManager()->mkNode(Kind::SET_SUBSET, u, tc);
-            sendInfer(reg, InferenceId::SETS_RELS_ACYCLIC_DOWN, eqc_node.negate());
+            sendInfer(
+                reg, InferenceId::SETS_RELS_ACYCLIC_DOWN, eqc_node.negate());
           }
           else
           {
@@ -1214,7 +1215,7 @@ void TheorySetsRels::applyTCSubsetRules(Node tc_rel, Node exp)
   // disjoint: no two edges of R compose, so TC(R) = R. Disjointness is
   // (set.inter A B) = empty in the current context.
   {
-    std::vector<std::pair<Node, std::vector<Node>>> products;  // product, why
+    std::vector<std::pair<Node, std::vector<Node> > > products;  // product, why
     auto productsOf = [&](Node rep) {
       std::vector<Node> res;
       auto it = d_terms_cache.find(rep);
@@ -1231,7 +1232,7 @@ void TheorySetsRels::applyTCSubsetRules(Node tc_rel, Node exp)
       if (pt != r) why.push_back(nm->mkNode(Kind::EQUAL, pt, r));
       products.emplace_back(pt, why);
     }
-    const std::map<Node, std::map<Node, Node>>& uidx2 =
+    const std::map<Node, std::map<Node, Node> >& uidx2 =
         d_state.getBinaryOpIndex(Kind::SET_UNION);
     for (const auto& e1 : uidx2)
     {
@@ -1265,7 +1266,7 @@ void TheorySetsRels::applyTCSubsetRules(Node tc_rel, Node exp)
         }
       }
     }
-    const std::map<Node, std::map<Node, Node>>& iidx =
+    const std::map<Node, std::map<Node, Node> >& iidx =
         d_state.getBinaryOpIndex(Kind::SET_INTER);
     for (const auto& [pt, why] : products)
     {
@@ -1333,7 +1334,7 @@ void TheorySetsRels::applyTCSubsetRules(Node tc_rel, Node exp)
     }
   }
   // (2) asserted supersets: (set.union R' P) = P or (set.union P R') = P
-  const std::map<Node, std::map<Node, Node>>& uidx =
+  const std::map<Node, std::map<Node, Node> >& uidx =
       d_state.getBinaryOpIndex(Kind::SET_UNION);
   for (const auto& e1 : uidx)
   {
@@ -1400,7 +1401,7 @@ bool TheorySetsRels::isTransitiveClass(Node pRep,
       return true;
     }
   }
-  const std::map<Node, std::map<Node, Node>>& uidx =
+  const std::map<Node, std::map<Node, Node> >& uidx =
       d_state.getBinaryOpIndex(Kind::SET_UNION);
   // J ; J^T with J functional: the class of p contains (rel.join P Q) where
   // one of P, Q is the transpose of the other, so that (rel.join P Q) is
@@ -2613,9 +2614,10 @@ void TheorySetsRels::applyContrMinimalRule(const std::vector<Node>& rels,
 }
 
 /*
- * RELATION_ACYCLIC_DOWN:  (a, b) IS_IN RELATION_TCLOSURE(x)  NOT RELATION_CYCLIC(x)
- *                         ---------------------------------------------------------
- *                                              a != b
+ * RELATION_ACYCLIC_DOWN:
+ *   (a, b) IS_IN RELATION_TCLOSURE(x)    NOT RELATION_CYCLIC(x)
+ *   ----------------------------------------------------------
+ *                            a != b
  */
 void TheorySetsRels::applyAcyclicDownRule(Node mem_rep,
                                           Node tc_rel,
@@ -2773,7 +2775,7 @@ void TheorySetsRels::applyAcyclicAnchorRules(const std::vector<Node>& rels,
   bool doIncl = mode == options::RelsAcyclicAnchorMode::INCLUSION
                 || mode == options::RelsAcyclicAnchorMode::BOTH;
   bool doBranch = mode == options::RelsAcyclicAnchorMode::BRANCH
-               || mode == options::RelsAcyclicAnchorMode::BOTH;
+                  || mode == options::RelsAcyclicAnchorMode::BOTH;
   if (mode == options::RelsAcyclicAnchorMode::NONE)
   {
     return;
@@ -2881,16 +2883,15 @@ void TheorySetsRels::applyAcyclicAnchorRules(const std::vector<Node>& rels,
             disjuncts.push_back(
                 nm->mkNode(Kind::SET_MEMBER, edge, tcS).negate());
           }
-          Node conc = disjuncts.size() == 1
-                          ? disjuncts[0]
-                          : nm->mkNode(Kind::OR, disjuncts);
+          Node conc = disjuncts.size() == 1 ? disjuncts[0]
+                                            : nm->mkNode(Kind::OR, disjuncts);
           // With l = concreteLen, the listed edges are the whole cycle
           // (s_l = s_1), so one of them must leave TC(S).
           Node branchReason =
               lenEq.isNull() ? reason
                              : nm->mkNode(Kind::AND, acyc_exp, acyc, lenEq);
-          Trace("rels-cycles") << "AcyclicAnchor (branch): " << conc
-                               << " from " << branchReason << std::endl;
+          Trace("rels-cycles") << "AcyclicAnchor (branch): " << conc << " from "
+                               << branchReason << std::endl;
           sendInfer(conc, InferenceId::SETS_RELS_CONTR_MINIMAL, branchReason);
         }
       }
@@ -2962,8 +2963,7 @@ void TheorySetsRels::checkAcyclicityLastCall(Valuation& val)
       // be sent (see applyAcyclicAnchorRules).
       if (N >= 2)
       {
-        Node lenEq =
-            nm->mkNode(Kind::EQUAL, l, nm->mkConstInt(Rational(N)));
+        Node lenEq = nm->mkNode(Kind::EQUAL, l, nm->mkConstInt(Rational(N)));
         applyAcyclicAnchorRules(
             rels, s, acyc_exp, static_cast<int64_t>(N), lenEq);
       }

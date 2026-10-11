@@ -1054,8 +1054,7 @@ TypeNode RelReflTransClosureTypeRule::computeType(NodeManager* nodeManager,
   return setType;
 }
 
-TypeNode RelCyclicTypeRule::preComputeType(NodeManager* nm,
-                                           CVC5_UNUSED TNode n)
+TypeNode RelCyclicTypeRule::preComputeType(NodeManager* nm, CVC5_UNUSED TNode n)
 {
   return nm->booleanType();
 }

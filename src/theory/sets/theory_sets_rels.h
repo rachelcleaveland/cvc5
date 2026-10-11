@@ -201,18 +201,18 @@ class TheorySetsRels : protected EnvObj
    * (not (rel.cyclic S)) with S in its class, e.g. po -> [(not (rel.cyclic
    * po))]. Used by the acyclic-down rule and as the S of the anchor rules.
    */
-  std::map<Node, std::vector<Node>> d_acyclic_cache;
+  std::map<Node, std::vector<Node> > d_acyclic_cache;
   /**
    * (R, S) for which the inclusion anchor lemma was sent, R the union of the
    * operands of a witness and S an acyclic relation.
    */
-  std::set<std::pair<Node, Node>> d_anchorInclusionSent;
+  std::set<std::pair<Node, Node> > d_anchorInclusionSent;
   /**
    * ((R, S), length) for which the branching anchor lemma was sent; the
    * length is part of the key since the length of the witness in the
    * candidate model may change between last-call checks.
    */
-  std::set<std::pair<std::pair<Node, Node>, size_t>> d_anchorBranchSent;
+  std::set<std::pair<std::pair<Node, Node>, size_t> > d_anchorBranchSent;
 
   /**
    * Maps the operands [R1, ..., Rk] of an asserted (rel.cyclic (R1 U ... U
@@ -232,7 +232,7 @@ class TheorySetsRels : protected EnvObj
    * (rel.is-functional R) with R in its class, e.g. po -> [(rel.is-functional
    * po)].
    */
-  std::map<Node, std::vector<Node>> d_functional_cache;
+  std::map<Node, std::vector<Node> > d_functional_cache;
   /** (rel.is-functional R) atoms asserted false for which we sent a witness */
   std::unordered_set<Node> d_notFunctionalSent;
 
