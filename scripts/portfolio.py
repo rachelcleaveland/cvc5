@@ -337,15 +337,18 @@ def ensure_benchmarks(args):
         if bench_dir is None:
             raise SystemExit("no directory of no-FMF benchmarks (%s) in %s" % (", ".join(NOFMF_CANDIDATES), repo))
 
-    # Which files form the benchmark set: the repository's list if present
-    # (it excludes plsc-2-th.new.smt2), otherwise every .smt2 that is not a .new.
+    # The benchmark set is every .smt2 file in the directory except the .new
+    # variants (plsc-2-th.new.smt2). The repository's benchmark_set_ltts list
+    # is deliberately not consulted: it is maintained for the cluster scripts
+    # and lags behind the directory (it lacked the tso-2 files), which
+    # silently dropped benchmarks. Use --benchmarks for a subset.
+    names = sorted(os.path.basename(f)[:-5] for f in glob.glob(os.path.join(bench_dir, "*.smt2"))
+                   if ".new." not in os.path.basename(f))
     set_file = os.path.join(repo, BENCH_SET_FILE)
     if os.path.isfile(set_file):
-        names = [os.path.basename(l.strip())[:-5] for l in open(set_file) if l.strip().endswith(".smt2")]
-    else:
-        names = [os.path.basename(f)[:-5] for f in glob.glob(os.path.join(bench_dir, "*.smt2"))
-                 if ".new." not in os.path.basename(f)]
-    names = sorted(set(names))
+        listed = sorted(set(os.path.basename(l.strip())[:-5] for l in open(set_file) if l.strip().endswith(".smt2")))
+        if listed != names:
+            log("note: %s lists %d files, the directory has %d; running the directory's files" % (set_file, len(listed), len(names)))
     missing = [n for n in names if not os.path.isfile(os.path.join(bench_dir, n + ".smt2"))]
     if missing:
         raise SystemExit("benchmark files missing in %s: %s" % (bench_dir, missing))
