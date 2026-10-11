@@ -2040,6 +2040,7 @@ set(regress_0_tests
   regress0/rels/rel_tc_8.cvc.smt2
   regress0/rels/rel_tc_down_lazy_sat.smt2
   regress0/rels/rel_tc_down_lazy_unsat.smt2
+  regress0/rels/rel_rclosure_union.smt2
   regress0/rels/rel_tc_subset_disjoint.smt2
   regress0/rels/rel_tc_subset_functional.smt2
   regress0/rels/rel_tc_subset_transitive.smt2

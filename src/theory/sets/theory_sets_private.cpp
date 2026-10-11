@@ -356,6 +356,15 @@ void TheorySetsPrivate::checkBasic()
         {
           hasFunctional = true;
         }
+        else if (nk == Kind::RELATION_RCLOSURE)
+        {
+          // no rules for the reflexive closure of a relation that rewriting
+          // did not eliminate, e.g. (rel.rclosure R) for a variable R
+          d_fullCheckIncomplete = true;
+          d_fullCheckIncompleteId = IncompleteId::SETS_RELS_RCLOSURE;
+          Trace("sets-incomplete")
+              << "Sets : incomplete because of " << n << "." << std::endl;
+        }
       }
       else if (isHigherOrderKind(nk))
       {

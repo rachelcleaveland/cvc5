@@ -940,16 +940,14 @@ RewriteResponse TheorySetsRewriter::postRewriteRClosure(TNode n)
   {
     case Kind::SET_EMPTY:
     {
-      // (rel.rclosure (as set.empty (Relation T T))) = (as set.empty (Relation
-      // T T))
+      // (rel.rclosure empty) = empty
       Node ret = n[0];
       return RewriteResponse(REWRITE_DONE, ret);
     }
     case Kind::SET_SINGLETON:
     {
-      // (rel.rclosure (set.singleton (tuple x y))) =
-      //   (set.insert (tuple y y) (set.insert (tuple x x) (set.singleton (tuple
-      //   x y))))
+      // (rel.rclosure {(x, y)}) = {(y, y)} U ({(x, x)} U {(x, y)}),
+      // e.g. (rel.rclosure {(1, 2)}) = {(1, 1), (1, 2), (2, 2)}
       Node tuple = n[0][0];
       Node x = TupleUtils::nthElementOfTuple(tuple, 0);
       Node y = TupleUtils::nthElementOfTuple(tuple, 1);
@@ -968,10 +966,10 @@ RewriteResponse TheorySetsRewriter::postRewriteRClosure(TNode n)
     }
     case Kind::SET_UNION:
     {
-      // (rel.rclosure (set.union A B)) = (set.union (rel.rclosure A)
-      // (rel.rclosure B))
-      Node A = n[0];
-      Node B = n[1];
+      // (rel.rclosure (A U B)) = (rel.rclosure A) U (rel.rclosure B), since
+      // the elements related by A U B are those related by A or by B
+      Node A = n[0][0];
+      Node B = n[0][1];
 
       Node rcloseA = nm->mkNode(Kind::RELATION_RCLOSURE, A);
       Node rcloseB = nm->mkNode(Kind::RELATION_RCLOSURE, B);

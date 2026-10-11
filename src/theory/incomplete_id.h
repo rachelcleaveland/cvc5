@@ -84,6 +84,10 @@ enum class IncompleteId
   // introduce a fresh relation member), so we could not confirm whether the
   // membership is actually justified
   SETS_RELS_JOIN_GROUNDING_UNKNOWN,
+  // a reflexive closure (rel.rclosure R) that rewriting did not eliminate
+  // (it only does for constants, singletons and unions); the relations
+  // solver has no rules for it
+  SETS_RELS_RCLOSURE,
   // we skipped processing a looping word equation
   STRINGS_LOOP_SKIP,
   // we could not simplify a regular expression membership
