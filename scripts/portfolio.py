@@ -3,17 +3,24 @@
 
 The script
   1. uses the cvc5 binary given by --cvc5 (normally the build of this
-     checkout, e.g. --cvc5 build/bin/cvc5); without --cvc5 it clones and
-     builds the branch of this PR (cycle-ext-cyclic of mudathirmahgoub/cvc5)
-     in the work directory; an existing clone is reused (fetched only if the
-     pinned commit is missing) and an existing build of the same commit is
-     not rebuilt; the official cvc5 releases do not know rel.cyclic, so a
-     release download is not an option;
-  2. obtains the benchmarks (relational-solver-benchmarks, directories
-     benchmarks-ltts and benchmarks-ltts-nofmf, by default at the head of
-     rachelcleaveland/relational-solver-benchmarks#2, which states acyclicity
-     with rel.cyclic) by cloning the repository, unless already present (no
-     network access then);
+     checkout, e.g. --cvc5 build/bin/cvc5 or --cvc5 build/bin); without
+     --cvc5 it clones and builds the branch of this PR (cycle-ext-cyclic of
+     mudathirmahgoub/cvc5) in the work directory; an existing clone is reused
+     (fetched only if the pinned commit is missing) and an existing build of
+     the same commit is not rebuilt; the official cvc5 releases do not know
+     rel.cyclic, so a release download is not an option. Every
+     configuration's options are checked against the binary before anything
+     is run;
+  2. obtains the benchmarks (relational-solver-benchmarks, by default at the
+     head of rachelcleaveland/relational-solver-benchmarks#2, which states
+     acyclicity with rel.cyclic) by cloning the repository, unless already
+     present (no network access then), or uses a local directory given with
+     --benchmarks-dir (no git involved at all). Only files WITHOUT an active
+     (set-option :finite-model-find true) line are used; configurations that
+     want finite model finding pass --finite-model-find on the command line,
+     which cvc5 treats identically. Checkouts where benchmarks-ltts still
+     switches it on are handled by using their benchmarks-ltts-nofmf
+     directory (next to or inside benchmarks-ltts) instead;
   3. runs the seven configurations of the portfolio in one or both modes.
 
 Definitions
@@ -41,9 +48,11 @@ Definitions
 Typical use (from the root of the cvc5 checkout)
   python3 scripts/portfolio.py --cvc5 build/bin/cvc5 --mode both --timeout 300 --jobs 6
   python3 scripts/portfolio.py --cvc5 build/bin/cvc5 --mode real --timeout 60
+  python3 scripts/portfolio.py --cvc5 build/bin/cvc5 --benchmarks-dir /path/to/benchmarks-ltts --mode virtual
   python3 scripts/portfolio.py --cvc5 build/bin/cvc5 --mode cvc5-portfolio   # what cvc5's own --use-portfolio does
 
-Requirements: python3 (>= 3.8), git; for building cvc5: cmake, a C++17
+Requirements: python3 (>= 3.8), git (unless --cvc5 and --benchmarks-dir
+are both given); for building cvc5: cmake, a C++17
 compiler, python3 modules tomli and pyparsing, and network access for
 ./configure.sh --auto-download.
 """
@@ -78,11 +87,17 @@ CVC5_REV = "4db5c57b0a"  # rachelcleaveland/cvc5#9 (rel.cyclic), 2026-10-09
 BENCH_REPO = "https://github.com/mudathirmahgoub/relational-solver-benchmarks.git"
 BENCH_REV = "e4a4f7e01b90c80e7a796e02c65eea024f999b58"
 BENCH_SUBDIR = "benchmarks-ltts"
-NOFMF_SUBDIR = "benchmarks-ltts-nofmf"
-BENCH_SET_FILE = "benchmark_set_ltts"
+# Where the no-FMF files live, relative to the repository root, in order of
+# preference: benchmarks-ltts itself (when its files do not enable finite
+# model finding), or the separate no-FMF directory (inside or next to
+# benchmarks-ltts, as at BENCH_REV).
+NOFMF_CANDIDATES = [BENCH_SUBDIR, BENCH_SUBDIR + "/benchmarks-ltts-nofmf", "benchmarks-ltts-nofmf"]
+BENCH_SET_FILE = "benchmark_set_ltts"    # basenames only, so it applies whichever directory is used
+FMF_LINE = re.compile(r"^\(set-option\s+:finite-model-find\s+true\)", re.M)
 
-# The configurations of the portfolio. 'nofmf' selects the copy of the file
-# without (set-option :finite-model-find true).
+# The configurations of the portfolio. All of them run the no-FMF files;
+# finite model finding is switched on per configuration with FMF below
+# (cvc5 treats --finite-model-find and the set-option line identically).
 #   default, fmf-unsat, nofmf-unsat, stoponly: the recipes of PR #4;
 #   *-rules, *-hammer: the same recipes plus the inference rules of PR #6
 #     (closure induction, no prenexing).
@@ -91,32 +106,33 @@ BENCH_SET_FILE = "benchmark_set_ltts"
 # pass that is redundant with rel.is-functional (both options are removed);
 # configs-acyclic.json has those configurations, for builds that know
 # rel.acyclic.
-PR4_FMF = ["--e-matching", "--inst-when=full-delay",
-           "--rels-acyclic-anchor=inclusion", "--rels-acyclic-backward-chords"]
+FMF = ["--finite-model-find"]
+PR4_FMF = FMF + ["--e-matching", "--inst-when=full-delay",
+                 "--rels-acyclic-anchor=inclusion", "--rels-acyclic-backward-chords"]
 PR4_NOFMF = ["--rels-acyclic-anchor=inclusion", "--inst-when=full-delay",
              "--rels-acyclic-backward-chords"]
 PR6_RULES = ["--prenex-quant=none", "--rels-tc-subset"]
 CONFIGS = OrderedDict([
     ("default", dict(
-        opts=[], nofmf=False,
-        desc="options as in the file (finite model finding on)")),
+        opts=FMF,
+        desc="finite model finding, otherwise cvc5 defaults (what the published file does)")),
     ("fmf-unsat", dict(
-        opts=PR4_FMF, nofmf=False,
+        opts=PR4_FMF,
         desc="PR #4: finite model finding + eager instantiation + inclusion anchor + backward chords")),
     ("nofmf-unsat", dict(
-        opts=PR4_NOFMF, nofmf=True,
-        desc="PR #4: the same recipe on the file without finite model finding")),
+        opts=PR4_NOFMF,
+        desc="PR #4: the same recipe without finite model finding")),
     ("stoponly", dict(
-        opts=["--decision=stoponly"], nofmf=False,
+        opts=FMF + ["--decision=stoponly"],
         desc="PR #4: SAT decisions by MiniSat, justification engine only stops early")),
     ("fmf-unsat-rules", dict(
-        opts=PR4_FMF + PR6_RULES + ["--rels-tc-down-lazy"], nofmf=False,
+        opts=PR4_FMF + PR6_RULES + ["--rels-tc-down-lazy"],
         desc="PR #6: fmf-unsat + closure induction, no prenexing, lazy closure split")),
     ("nofmf-unsat-rules", dict(
-        opts=PR4_NOFMF + PR6_RULES + ["--rels-tc-down-lazy"], nofmf=True,
+        opts=PR4_NOFMF + PR6_RULES + ["--rels-tc-down-lazy"],
         desc="PR #6: nofmf-unsat + the same rules and lazy closure split")),
     ("nofmf-unsat-hammer", dict(
-        opts=PR4_NOFMF + PR6_RULES + ["--rels-acyclic-hammer"], nofmf=True,
+        opts=PR4_NOFMF + PR6_RULES + ["--rels-acyclic-hammer"],
         desc="PR #6: nofmf-unsat + the same rules, no closure split (unsat only)")),
 ])
 
@@ -157,6 +173,22 @@ def sh(cmd, cwd=None, logfile=None, check=True):
 # --------------------------------------------------------------------------
 # Step 1: cvc5
 # --------------------------------------------------------------------------
+
+def check_options(binary, configs):
+    """Run every configuration's options on an empty input so that an option
+    the binary does not know fails here, once, instead of in every run."""
+    bad = []
+    for c in configs:
+        p = subprocess.run([binary, "--lang=smt2"] + CONFIGS[c]["opts"], input="", capture_output=True,
+                           text=True, timeout=60)
+        out = (p.stdout + p.stderr).strip()
+        if p.returncode != 0 or "Error in option parsing" in out:
+            bad.append("  %s: %s" % (c, out.splitlines()[0] if out else "exit code %d" % p.returncode))
+    if bad:
+        raise SystemExit("%s rejects the options of %d configuration(s):\n%s\n(is the binary built from %s?)"
+                         % (binary, len(bad), "\n".join(bad), CVC5_BRANCH))
+    log("option check: all %d configurations accepted by %s" % (len(configs), binary))
+
 
 def cvc5_version(binary):
     try:
@@ -208,7 +240,9 @@ def ensure_checkout(repo, url, branch, rev, logfile=None):
 def ensure_cvc5(args):
     if args.cvc5:
         binary = os.path.abspath(args.cvc5)
-        if not os.access(binary, os.X_OK):
+        if os.path.isdir(binary):  # e.g. build/bin: look for the binary inside
+            binary = os.path.join(binary, "cvc5")
+        if not (os.path.isfile(binary) and os.access(binary, os.X_OK)):
             raise SystemExit("--cvc5 %s is not an executable file" % binary)
         log("using cvc5 given on the command line: %s" % binary)
         return binary
@@ -249,12 +283,53 @@ def ensure_cvc5(args):
 # Step 2: benchmarks
 # --------------------------------------------------------------------------
 
+def files_with_fmf(directory):
+    """Basenames (without .smt2) of the files in DIRECTORY that switch finite model finding on."""
+    return sorted(os.path.basename(f)[:-5] for f in glob.glob(os.path.join(directory, "*.smt2"))
+                  if FMF_LINE.search(open(f, errors="replace").read()))
+
+
+def find_nofmf_dir(root):
+    """The first of NOFMF_CANDIDATES under ROOT that holds .smt2 files none of
+    which enables finite model finding; None if there is no such directory."""
+    for sub in NOFMF_CANDIDATES:
+        d = os.path.join(root, sub)
+        if glob.glob(os.path.join(d, "*.smt2")) and not files_with_fmf(d):
+            return d
+    return None
+
+
+def local_benchmarks(path):
+    """Resolve --benchmarks-dir. PATH is either the root of the benchmark
+    repository or the directory holding the no-FMF .smt2 files itself.
+    Returns (repo, bench_dir, rev); no git is required, the revision is
+    taken from git only if PATH happens to be a checkout."""
+    root = os.path.abspath(path)
+    if not os.path.isdir(root):
+        raise SystemExit("--benchmarks-dir %s is not a directory" % root)
+    if glob.glob(os.path.join(root, "*.smt2")):
+        repo, bench_dir = os.path.dirname(root), root
+    else:
+        bench_dir = find_nofmf_dir(root)
+        if bench_dir is None:
+            raise SystemExit("--benchmarks-dir %s contains neither .smt2 files nor a no-FMF directory (%s)"
+                             % (root, ", ".join(NOFMF_CANDIDATES)))
+        repo = root
+    p = subprocess.run(["git", "-C", bench_dir, "rev-parse", "HEAD"], capture_output=True, text=True)
+    rev = p.stdout.strip() if p.returncode == 0 and p.stdout.strip() else "local"
+    log("using local benchmarks in %s (rev %s; nothing is cloned)" % (bench_dir, rev))
+    return repo, bench_dir, rev
+
+
 def ensure_benchmarks(args):
-    repo = os.path.join(args.workdir, "relational-solver-benchmarks")
-    head = ensure_checkout(repo, args.benchmarks_repo, None, args.benchmarks_rev)
-    bench_dir = os.path.join(repo, BENCH_SUBDIR)
-    if not os.path.isdir(bench_dir):
-        raise SystemExit("no %s directory in %s" % (BENCH_SUBDIR, repo))
+    if args.benchmarks_dir:
+        repo, bench_dir, head = local_benchmarks(args.benchmarks_dir)
+    else:
+        repo = os.path.join(args.workdir, "relational-solver-benchmarks")
+        head = ensure_checkout(repo, args.benchmarks_repo, None, args.benchmarks_rev)
+        bench_dir = find_nofmf_dir(repo)
+        if bench_dir is None:
+            raise SystemExit("no directory of no-FMF benchmarks (%s) in %s" % (", ".join(NOFMF_CANDIDATES), repo))
 
     # Which files form the benchmark set: the repository's list if present
     # (it excludes plsc-2-th.new.smt2), otherwise every .smt2 that is not a .new.
@@ -269,32 +344,19 @@ def ensure_benchmarks(args):
     if missing:
         raise SystemExit("benchmark files missing in %s: %s" % (bench_dir, missing))
 
-    # The no-FMF copies: the repository's directory if it has them, otherwise
-    # generate them by dropping the finite-model-find option line.
-    nofmf_dir = os.path.join(repo, NOFMF_SUBDIR)
-    generated = os.path.join(args.workdir, "benchmarks-ltts-nofmf-generated")
-    if not all(os.path.isfile(os.path.join(nofmf_dir, n + ".smt2")) for n in names):
-        os.makedirs(generated, exist_ok=True)
-        for n in names:
-            src = open(os.path.join(bench_dir, n + ".smt2")).read()
-            dst = re.sub(r"^\(set-option :finite-model-find true\)\s*\n", "", src, flags=re.M)
-            open(os.path.join(generated, n + ".smt2"), "w").write(dst)
-        nofmf_dir = generated
-        log("generated no-FMF copies in %s" % generated)
-    else:
-        # Sanity check: the only difference must be the finite-model-find line.
-        for n in names:
-            a = [l for l in open(os.path.join(bench_dir, n + ".smt2")) if "finite-model-find" not in l]
-            b = [l for l in open(os.path.join(nofmf_dir, n + ".smt2")) if "finite-model-find" not in l]
-            if a != b:
-                log("WARNING: %s/%s.smt2 differs from the FMF file beyond the finite-model-find line" % (NOFMF_SUBDIR, n))
-    log("benchmarks at %s (%d files): %s" % (head, len(names), ", ".join(names)))
-    return dict(repo=repo, rev=head, bench_dir=bench_dir, nofmf_dir=nofmf_dir, names=names)
+    # Guard: the files must not switch finite model finding on themselves,
+    # otherwise the no-FMF configurations would silently run with it.
+    with_fmf = [n for n in files_with_fmf(bench_dir) if n in names]
+    if with_fmf:
+        raise SystemExit("%s in %s contain (set-option :finite-model-find true); point --benchmarks-dir at the "
+                         "no-FMF files, finite model finding is enabled per configuration with %s"
+                         % (", ".join(with_fmf), bench_dir, FMF[0]))
+    log("benchmarks in %s at %s (%d files): %s" % (bench_dir, head, len(names), ", ".join(names)))
+    return dict(repo=repo, rev=head, bench_dir=bench_dir, names=names)
 
 
 def benchmark_path(bench, name, config):
-    d = bench["nofmf_dir"] if CONFIGS[config]["nofmf"] else bench["bench_dir"]
-    return os.path.join(d, name + ".smt2")
+    return os.path.join(bench["bench_dir"], name + ".smt2")
 
 
 # --------------------------------------------------------------------------
@@ -638,19 +700,20 @@ def parse_args(argv):
     ap.add_argument("--benchmarks", nargs="+", default=None, help="restrict to these benchmark names")
     ap.add_argument("--configs", nargs="+", default=None, help="configurations to use (names from the built-in table or from --configs-file)")
     ap.add_argument("--configs-file", default=None,
-                    help="JSON file {name: {\"opts\": [...], \"nofmf\": bool, \"desc\": str}} replacing the built-in configurations")
+                    help="JSON file {name: {\"opts\": [...], \"desc\": str}} replacing the built-in configurations "
+                         "(add --finite-model-find to opts for finite model finding)")
     ap.add_argument("--no-expected", action="store_true", help="do not compare answers with the hand-verified expectations")
-    ap.add_argument("--cvc5", default=None, help="use this cvc5 binary instead of cloning and building")
+    ap.add_argument("--cvc5", default=None, help="use this cvc5 binary (or the directory containing it) instead of cloning and building")
     ap.add_argument("--cvc5-repo", default=CVC5_REPO)
     ap.add_argument("--cvc5-branch", default=CVC5_BRANCH)
     ap.add_argument("--cvc5-rev", default=CVC5_REV, help="commit to build (default: the code of rachelcleaveland/cvc5#9; 'HEAD' for the branch tip)")
     ap.add_argument("--rebuild", action="store_true", help="rebuild cvc5 even if a build exists")
     ap.add_argument("--build-jobs", type=int, default=os.cpu_count() or 4)
-    ap.add_argument("--bench-dir", default=None,
-                    help="use the .smt2 files of this directory instead of the repository's benchmarks-ltts (same file names)")
-    ap.add_argument("--nofmf-dir", default=None,
-                    help="directory of the files without finite model finding to use with --bench-dir")
-    ap.add_argument("--benchmarks-repo", default=BENCH_REPO)
+    ap.add_argument("--benchmarks-dir", "--bench-dir", dest="benchmarks_dir", default=None,
+                    help="use the benchmarks in this local directory (the repository root or the directory of no-FMF "
+                         ".smt2 files itself) instead of cloning; no git needed")
+    ap.add_argument("--nofmf-dir", default=None, help=argparse.SUPPRESS)  # removed; rejected in main
+    ap.add_argument("--benchmarks-repo", default=BENCH_REPO, help="git URL to clone when --benchmarks-dir is not given")
     ap.add_argument("--benchmarks-rev", default=BENCH_REV, help="commit of the benchmark repository ('HEAD' for the tip)")
     return ap.parse_args(argv)
 
@@ -661,12 +724,18 @@ def main(argv):
         loaded = json.load(open(args.configs_file), object_pairs_hook=OrderedDict)
         CONFIGS.clear()
         for name, c in loaded.items():
-            CONFIGS[name] = dict(opts=list(c.get("opts", [])), nofmf=bool(c.get("nofmf", False)), desc=c.get("desc", ""))
+            if c.get("nofmf") is not None:
+                raise SystemExit("configuration %s: 'nofmf' is no longer supported; all configurations run the "
+                                 "no-FMF files, add %s to opts instead" % (name, FMF[0]))
+            CONFIGS[name] = dict(opts=list(c.get("opts", [])), desc=c.get("desc", ""))
     if args.configs is None:
         args.configs = list(CONFIGS)
     unknown = [c for c in args.configs if c not in CONFIGS]
     if unknown:
         raise SystemExit("unknown configurations: %s (known: %s)" % (unknown, list(CONFIGS)))
+    if args.nofmf_dir:
+        raise SystemExit("--nofmf-dir no longer exists: give the directory of no-FMF files as --benchmarks-dir, "
+                         "finite model finding is enabled per configuration with %s" % FMF[0])
     args.workdir = os.path.abspath(args.workdir)
     os.makedirs(args.workdir, exist_ok=True)
     tag = args.tag or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -675,11 +744,8 @@ def main(argv):
     cvc5 = ensure_cvc5(args)
     args.cvc5_binary = cvc5
     log("cvc5 version: %s" % cvc5_version(cvc5))
+    check_options(cvc5, args.configs)
     bench = ensure_benchmarks(args)
-    if args.bench_dir:
-        bench["bench_dir"] = os.path.abspath(args.bench_dir)
-        bench["nofmf_dir"] = os.path.abspath(args.nofmf_dir or args.bench_dir)
-        log("using benchmark files from %s (no-FMF: %s)" % (bench["bench_dir"], bench["nofmf_dir"]))
     if args.benchmarks:
         unknown = [b for b in args.benchmarks if b not in bench["names"]]
         if unknown:
