@@ -2,7 +2,9 @@
 ; REQUIRES: no-stable-mode
 ; COMMAND-LINE: --rels-acyclic-hammer
 ; EXPECT: unsat
-; With a, b, c, d distinct, (a, c) in A;B is refuted by the grounding conflict.
+; Companion of rel_join_grounding_merge (join grounding conflict of
+; --rels-acyclic-hammer, an option of this branch): with a, b, c, d distinct,
+; A;B = {(a, b)};{(d, c)} is empty, and the conflict refutes (a, c) in A;B.
 (set-logic ALL)
 (declare-sort U 0)
 (declare-const A (Relation U U))
