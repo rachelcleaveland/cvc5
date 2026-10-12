@@ -606,8 +606,9 @@ enum class InferenceId
   SETS_RELS_JOIN_SPLIT_1,
   SETS_RELS_JOIN_SPLIT_2,
   // (x, z) in (rel.join A B) not explained by the known members of A and B
-  // (last call, --rels-acyclic-hammer), e.g. (a, c) in A;B /\ A = {(a, b)} /\
-  // B = {(d, c)} /\ distinct(a, b, c, d) => false
+  // (last call, --rels-acyclic-hammer), e.g.
+  //   (a, c) in A;B /\ A = {(a, b)} /\ B = {(d, c)} /\ distinct(a, b, c, d)
+  //   => false
   SETS_RELS_JOIN_GROUNDING_CONFLICT,
   SETS_RELS_TABLE_JOIN_UP,
   SETS_RELS_TABLE_JOIN_DOWN,

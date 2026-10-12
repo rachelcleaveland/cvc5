@@ -480,8 +480,9 @@ class TheorySetsRels : protected EnvObj
    * exp, that the known members of A and B do not explain:
    *   (x, z) in A;B /\ A = {known} /\ B = {known} /\ distinct(elements)
    *     => false
-   * e.g. (a, c) in A;B /\ A = {(a, b)} /\ B = {(d, c)} /\
-   * distinct(a, b, c, d) => false (with b = d the membership holds).
+   * e.g. (a, c) in A;B /\ A = {(a, b)} /\ B = {(d, c)}
+   *      /\ distinct(a, b, c, d) => false
+   * (with b = d the membership holds).
    * Introduces no fresh element.
    */
   void applyJoinGroundingConflict(Node mem_rep, Node join_rel, Node exp);
