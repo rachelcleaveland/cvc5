@@ -7,9 +7,13 @@
 \usepackage{xcolor}
 \usepackage{mathpartir}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds,shapes.geometric}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds,shapes.geometric,decorations.pathreplacing}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\usepackage[linesnumbered,vlined,ruled]{algorithm2e}
+\SetAlFnt{\scriptsize}
+\SetAlCapFnt{\scriptsize}
+\DontPrintSemicolon
 
 \usetheme{CambridgeUS}
 \usefonttheme{serif}
@@ -274,7 +278,7 @@
     \and
     \inferrule*[right=\rn{Inst-Cycle}]{\cyc{R_1\cup\dots\cup R_k}}{1 < l}
     \\
-    \inferrule*[right=\rn{Unroll}]{\cyc{R} \\ i < l}
+    \inferrule*[right=\rn{Unroll}]{i < l}
       {(s_i,s_{i+1})\in \TC(R_1)\ \vee\ \dots\ \vee\ (s_i,s_{i+1})\in \TC(R_k)}
     \and
     \inferrule*[right=\rn{Split-Len}]{\cyc{R} \\ i \le l}{i < l\ \vee\ (l = i \wedge s_i = s_1)}
@@ -288,6 +292,8 @@
       $\cyc{rf\cup(po\cup co)}$ alternates between $\TC(rf)$, $\TC(po)$, $\TC(co)$.
     \item One \rn{Unroll} per check round; at last call the witness is completed to the value
       of $l$ in the candidate model.
+    \item \rn{Unroll} needs no $\cyc{R}$ premise: if $\cyc{R}$ is false, $l$ is unconstrained
+      and $l \le 1$ makes every instance vacuous.
   \end{itemize}
 \end{frame}
 
@@ -295,20 +301,22 @@
   \begin{columns}[T]
   \begin{column}{0.6\textwidth}
     \footnotesize\mprset{sep=1.2em}
-    A shortest cycle of $\TC(R_1)\cup\dots\cup\TC(R_k)$ exists whenever a cycle does, so the
-    witness can be assumed shortest (for $q<r\le l$, every $R_j$):
+    The witness can be a shortest cycle of $\TC(R_1)\cup\dots\cup\TC(R_k)$ ($q<r\le l$, every
+    $R_j$):
     \begin{mathpar}
       \inferrule*[right=\rn{Alternate}]{\cyc{R} \\ i < l}
         {\neg\big((s_{i-1},s_i)\in\TC(R_j) \wedge (s_i,s_{i+1})\in\TC(R_j)\big)}
       \\
-      \inferrule*[right=\rn{Chord}]{\cyc{R} \\ r \le l \\ q < r-1 \\ (q,r)\ne(1,l)}
-        {(s_q,s_r)\notin\TC(R_j)}
+      \inferrule*[right=\rn{Alt-Close}]{\cyc{R} \\ l = i+1}
+        {\neg\big((s_i,s_{i+1})\in\TC(R_j) \wedge (s_1,s_2)\in\TC(R_j)\big)}
       \\
+      \inferrule*[right=\rn{Chord}]{\cyc{R} \\ r \le l \\ q < r-1}
+        {(s_q,s_r)\notin\TC(R_j)}
+      \and
       \inferrule*[right=\rn{Distinct}]{\cyc{R} \\ r \le l \\ (q,r)\ne(1,l)}{s_q \ne s_r}
     \end{mathpar}
     \textbf{\rn{Backward}} (\sm{--rels-acyclic-backward-chords}): $(s_r,s_q)\notin\TC(R_j)$ if it
-    closes a shorter cycle. It lets a totality axiom (e.g.\ $po$ within a thread) bound the
-    length of the witness.
+    closes a shorter cycle; lets a totality axiom (e.g.\ $po$) bound the witness.
   \end{column}
   \begin{column}{0.38\textwidth}
     \centering
@@ -428,8 +436,6 @@
     \item \sm{uf} (default): a fresh function $f_R$; linear in the members, congruence does the
       rest: $(a,b),(a,c)\in R$ give $b = f_R(a) = c$. \sm{pairs}: quadratic, no function symbol
       (used when the logic has no UF).
-    \item With cardinality constraints the solver answers \sm{unknown} (the cardinality solver
-      may add members that are not constrained).
     \item Feeds closure induction: $J;J^T$ is transitive if $J$ is functional ($J^T;J$
       relates only equal elements), e.g.\ \emph{same location} $= address;address^T$.
   \end{itemize}
@@ -437,9 +443,15 @@
 
 \begin{frame}{Splitting closures and joins: eager, lazy, or not at all}
   \small
-  \textbf{Eager} (cvc5 main): \rn{TC-Down} and \rn{Join-Split} for every membership, each with
-  fresh elements. With finite model finding this floods the model with elements.
-  \medskip
+  \textbf{Eager} (cvc5 main): \rn{TC-Down} for every closure membership that the known members
+  do not explain, and \rn{Join-Split} for every join membership, each with fresh elements. With
+  finite model finding this floods the model with elements.
+  {\footnotesize\mprset{sep=1.2em}
+  \begin{mathpar}
+    \inferrule*[right=\rn{Join-Split}]{(x,z)\in A;B}{(x,k)\in A \wedge (k,z)\in B}
+    \and
+    \inferrule*[right=\rn{Join-Compose}]{(x,y)\in A \\ (y,z)\in B}{(x,z)\in A;B}
+  \end{mathpar}}
 
   \textbf{Lazy} (\sm{--rels-tc-down-lazy}): \rn{TC-Down} only at last call, and only for
   memberships that the known members of $R$ do not explain. Unsat proofs that never unfold a
@@ -447,15 +459,13 @@
   \medskip
 
   \textbf{Not at all} (\sm{--rels-acyclic-hammer}, for unsat problems): no \rn{TC-Down} and no
-  \rn{Join-Split}. At last call a membership that the known members do not explain is a
-  conflict:
-  \begin{mathpar}
-    \inferrule*[right=\rn{Ground-TC}]{(a,b)\in\TC(R) \\ R = \{m_1,\dots,m_n\} \\
-      \mathit{distinct}(a,b,\text{elements of the } m_i)}{\bot}
-  \end{mathpar}
-  and \rn{Ground-Join} for $(x,z)\in A;B$. The distinctness premise matters: without it, the
-  conflict for $(a,c)\in A;B$, $A=\{(a,b)\}$, $B=\{(d,c)\}$ refuted the branch $b=d$, in which the
-  membership holds (fixed in this PR). With cardinality constraints: \sm{unknown}.
+  \rn{Join-Split}. At last call, a closure or join membership that the known members do not
+  explain is a conflict (\rn{Ground-TC}, \rn{Ground-Join}; see \emph{Grounding at last call}).
+  \medskip
+
+  Lazy and hammer move element introduction for closures and joins out of the full-effort
+  check: the last call either introduces them only where needed (lazy) or refutes the
+  candidate model instead (hammer).
 \end{frame}
 
 \begin{frame}{Why inference rules and not rewrite rules?}
@@ -506,14 +516,14 @@
     \item \textbf{Lemmas about skolems}, satisfiability-preserving: any model of the input
       extends to one in which the witness is a shortest cycle of the operands' closures,
       $f_R$ maps every element to its image, etc. This covers \rn{Cycle-Def}, \rn{Inst-Cycle},
-      \rn{Unroll}, \rn{Split-Len}, \rn{Alternate}, \rn{Chord}, \rn{Distinct}, \rn{Backward},
-      \rn{Inclusion}, \rn{Fun-UF}, \rn{Not-Fun}. \rn{Branch} follows from them (thanks to
-      $l = N$).
+      \rn{Unroll}, \rn{Split-Len}, \rn{Alternate}, \rn{Alt-Close}, \rn{Chord}, \rn{Distinct},
+      \rn{Backward}, \rn{Inclusion}, \rn{Fun-UF}, \rn{Not-Fun}. \rn{Branch} follows from them
+      (thanks to $l = N$). The last call sends instances of the same rules (see \emph{Is
+      introducing elements at last call sound?}).
     \item \textbf{Incompleteness is reported}, so cvc5 answers \sm{unknown} instead of a wrong
       \sm{sat}, when
       \begin{itemize}
         \item the length of a witness has no practical value in the model;
-        \item cardinality constraints meet grounding conflicts or \sm{rel.is-functional};
         \item a \sm{rel.rclosure} term is not eliminated by rewriting.
       \end{itemize}
     \item \textbf{Proofs.} The lemmas are trusted theory lemmas; their CPC proofs check with
@@ -583,7 +593,8 @@
        \rn{Fun-Pairs}}};
     \node[rules,text width=7.7cm,below=2mm of rrel.south west,anchor=north west] (racyc)
       {\textbf{\new{new step}}: per witness one \new{\rn{Unroll}}, \new{\rn{Split-Len}},
-       \new{\rn{Alternate}, \rn{Chord}, \rn{Distinct}, \rn{Backward}}, \new{\rn{Inclusion}};
+       \new{\rn{Alternate}, \rn{Alt-Close}, \rn{Chord}, \rn{Distinct}, \rn{Backward}},
+       \new{\rn{Inclusion}};
        \new{\rn{Branch}} for self-loops};
     \node[rules,text width=7.7cm,below=2mm of racyc.south west,anchor=north west] (rdown)
       {\textbf{closures}: \rn{TC-Down} (\new{deferred if lazy, skipped by the hammer}) and
@@ -612,11 +623,9 @@
        minimality up to $N$ elements; then \rn{Branch} with premise $l = N$. No practical $N$:
        model unsound (\sm{unknown}).};
     \node[rules,right=6mm of t,text width=8.4cm] (rt)
-      {lazy: \rn{TC-Down} for every unexplained $(a,b)\in\TC(R)$; hammer: \rn{Ground-TC};
-       with cardinality: model unsound};
+      {lazy: \rn{TC-Down} for every unexplained $(a,b)\in\TC(R)$; hammer: \rn{Ground-TC}};
     \node[rules,right=6mm of j,text width=8.4cm] (rj)
-      {hammer: \rn{Ground-Join} for every unexplained $(x,z)\in A;B$; with cardinality: model
-       unsound};
+      {hammer: \rn{Ground-Join} for every unexplained $(x,z)\in A;B$};
     \draw[newc,thick] (a) -- (ra);
     \draw[newc,thick] (t) -- (rt);
     \draw[newc,thick] (j) -- (rj);
@@ -635,7 +644,7 @@
   \centering
   \begin{tikzpicture}[x=1cm,y=1cm]
     \draw[->,thick,gray] (0,0) -- (14.2,0) node[right,lab]{time};
-    \foreach \x/\t in {1.2/round 1,4.1/round 2,7.0/round 3,11.6/last call} {
+    \foreach \x/\t in {1.2/round 1,4.1/round 2,7.0/quiet round,11.6/last call} {
       \draw[gray] (\x,0.1) -- (\x,-0.1) node[below,lab]{\t};
     }
     % round 1
@@ -669,11 +678,324 @@
   \small
   \begin{itemize}
     \item Each round's lemmas go back to the SAT solver; a conflict may backtrack past the
-      creation of $s_3$, which then disappears from the witness (and is recreated, as the same
-      skolem, if needed again).
+      creation of $s_3$, which then disappears from the witness. It is recreated, as the same
+      skolem, with lemmas that are already known: that round is quiet, and the last call runs.
     \item A witness that is too long for the problem is refuted by minimality and the anchors;
       a short one survives and its edges become the model's cycle.
   \end{itemize}
+\end{frame}
+
+%=====================================================================
+\section{Last call and model construction}
+
+\begin{frame}{Last call: completing the witness}
+  \begin{columns}[T]
+  \begin{column}{0.52\textwidth}
+    \begin{algorithm}[H]
+      \caption{\sm{checkAcyclicityLastCall}}
+      \ForEach{witness $s_1..s_c$, $l$ of an asserted $\cyc{R_1\cup\dots\cup R_k}$}{
+        $N \leftarrow$ the value of $l$ in the candidate model\;
+        \If{$N$ is not a constant, or $N > 10000$}{
+          \rn{Len-Unknown}: model unsound; \textbf{continue}\;
+        }
+        \While{$c < N$}{
+          $s_{c+1} \leftarrow$ the skolem cached for $(R,\ c+1)$\;
+          send \rn{Unroll}$_c$, \rn{Alternate}$_c$, \rn{Alt-Close}$_c$\;
+          $c \leftarrow c+1$\;
+          send \rn{Split-Len}$_c$, and \rn{Chord}, \rn{Distinct},\\
+          \quad \rn{Backward} for the pairs up to $s_c$\;
+        }
+        \If{$N \ge 2$}{
+          \ForEach{asserted $\neg\cyc{S}$}{
+            send \rn{Branch}$_N$ (once per $R$, $S$, $N$)\;
+          }
+        }
+      }
+    \end{algorithm}
+    \scriptsize A lemma that was sent before is not sent again (the lemma cache survives
+    backtracking).
+  \end{column}
+  \begin{column}{0.46\textwidth}
+    \centering
+    \begin{tikzpicture}[x=1.2cm,y=1cm]
+      \node[lab] at (2.1,1.9) {current context: $c = 2$; model: $l = 5$};
+      \node[ev,fill=blue!8] (a1) at (0,1.25) {$s_1$};
+      \node[ev,fill=blue!8] (a2) at (1.2,1.25) {$s_2$};
+      \draw[arr] (a1) -- (a2);
+      \node[lab] at (2.1,0.55) {after the last call: $c = 5$};
+      \node[ev,fill=blue!8] (b1) at (0,-0.55) {$s_1$};
+      \node[ev,fill=blue!8] (b2) at (1.2,-0.55) {$s_2$};
+      \node[ev,fill=lcc!15] (b3) at (2.4,-0.55) {$s_3$};
+      \node[ev,fill=lcc!15] (b4) at (3.6,-0.55) {$s_4$};
+      \node[ev,fill=lcc!15] (b5) at (4.8,-0.55) {$s_5$};
+      \draw[arr] (b1) -- (b2);
+      \draw[arr,lcc] (b2) -- node[lab,below=2pt]{$2<l$} (b3);
+      \draw[arr,lcc] (b3) -- node[lab,below=2pt]{$3<l$} (b4);
+      \draw[arr,lcc] (b4) -- node[lab,below=2pt]{$4<l$} (b5);
+      \draw[dashed,thick,lcc] (b5) to[bend right=18] (b1);
+      \node[lab,lcc] at (2.4,-1.45) {\rn{Split-Len}$_5$: $l=5 \Rightarrow s_5 = s_1$};
+    \end{tikzpicture}
+    \medskip
+
+    \footnotesize
+    \begin{itemize}
+      \item \textbf{Why $c < N$}: full effort adds one element per round, backtracking removes
+        them. Re-unrolled with the same skolems, a round sends only known lemmas: it is quiet,
+        and the last call runs. Each new edge (orange) has its own guard $i < l$.
+    \end{itemize}
+  \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{The lemmas about the witness}
+  \footnotesize\vspace{-1mm}
+  Each lemma is \emph{premise} $\Rightarrow$ \emph{conclusion}, for the witness of
+  $\cyc{R}$, $R = R_1\cup\dots\cup R_k$, and every operand $R_j$:
+  \begin{center}
+  \scriptsize\renewcommand{\arraystretch}{1.05}
+  \begin{tabular}{@{}L{2.4cm}L{4.6cm}L{7.2cm}@{}}
+    \toprule
+    rule & premise & conclusion \\
+    \midrule
+    \rn{Inst-Cycle} & $\cyc{R}$ & $1 < l$ \\
+    \rn{Unroll}$_i$ & $i < l$ & $(s_i,s_{i+1})\in\TC(R_1)\vee\dots\vee(s_i,s_{i+1})\in\TC(R_k)$ \\
+    \rn{Split-Len}$_r$ & $\cyc{R}\wedge r \le l$ & $r < l\ \vee\ (l = r \wedge s_r = s_1)$ \\
+    \rn{Alternate}$_i$ & $\cyc{R}\wedge i < l$ \hfill ($i\ge 2$) &
+      $\neg\big((s_{i-1},s_i)\in\TC(R_j)\wedge(s_i,s_{i+1})\in\TC(R_j)\big)$ \\
+    \rn{Alt-Close}$_i$ & $\cyc{R}\wedge l = i+1$ \hfill ($i\ge 2$) &
+      $\neg\big((s_i,s_{i+1})\in\TC(R_j)\wedge(s_1,s_2)\in\TC(R_j)\big)$ \\
+    \rn{Chord}$_{q,r}$ & $\cyc{R}\wedge r\le l$ \hfill ($q < r-1$) & $(s_q,s_r)\notin\TC(R_j)$ \\
+    \rn{Distinct}$_{q,r}$ & $\cyc{R}\wedge r\le l\ [{}\wedge r\ne l$ if $q=1]$ & $s_q\ne s_r$ \\
+    \rn{Branch}$_N$ & $\cyc{R}\wedge\neg\cyc{S}\wedge \alert{l = N}$ &
+      $(s_1,s_2)\notin\TC(S)\vee\dots\vee(s_{N-1},s_N)\notin\TC(S)$ \\
+    \rn{Len-Unknown} & $l$ has no value $\le 10000$ & model unsound: \sm{unknown}, never \sm{sat} \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item The premises mention the term $l$, never its value. $N$ only decides \emph{how many}
+      instances the last call sends, and appears only as the literal $l = N$ of \rn{Branch}$_N$.
+    \item $s_i$ is the skolem cached for $(R, i)$: full effort and the last call build the same
+      element and lemma. The last call changes \emph{when} a lemma is sent, not \emph{what} it
+      says.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Is introducing elements at last call sound? (1/2)}
+  \begin{columns}[T]
+  \begin{column}{0.53\textwidth}
+    \small
+    \textbf{Claim}: every model $M$ of the input extends to a model $M'$ that satisfies the
+    lemmas about the witness \emph{for all indices and all $N$ at once}: whatever values of
+    $l$ the candidate models show, no model of the input is lost (no wrong \sm{unsat}).
+    \medskip
+
+    $M'$ interprets only the skolems:
+    \begin{itemize}
+      \item $\cyc{R}$ true in $M$: take a \emph{shortest} cycle of
+        $\TC(R_1)\cup\dots\cup\TC(R_k)$ in $M$, with $L-1$ edges. Set $l := L$, put
+        $s_1,\dots,s_L$ along the cycle ($s_L = s_1$), and let $s_i$, $i > L$, be any element.
+      \item $\cyc{R}$ false in $M$: $l := 1$, every $s_i$ any element.
+    \end{itemize}
+    Every guard of an index beyond $L$ ($i < l$, $r \le l$, $l = N$) is false in $M'$: the
+    elements created for a larger value of $l$ are unconstrained.
+  \end{column}
+  \begin{column}{0.45\textwidth}
+    \centering
+    \begin{tikzpicture}[x=0.95cm,y=1cm]
+      \node[lab,align=center] at (3.5,2.0) {an earlier candidate model had $l = 6$, so a
+        last call\\created $s_3,\dots,s_6$; the final model has $l = 4$};
+      \foreach \i in {1,2} {
+        \node[ev,fill=blue!8,minimum size=6mm] (s\i) at (\i,0) {\scriptsize $s_{\i}$};
+      }
+      \foreach \i in {3,...,6} {
+        \node[ev,fill=lcc!15,minimum size=6mm] (s\i) at (\i,0) {\scriptsize $s_{\i}$};
+      }
+      \foreach \i/\j in {1/2,2/3,3/4} { \draw[arr] (s\i) -- (s\j); }
+      \draw[arr,dashed,gray] (s4) -- (s5);
+      \draw[arr,dashed,gray] (s5) -- (s6);
+      \draw[dashed,thick] (s4) to[bend right=40] node[lab,above]{$s_4 = s_1$} (s1);
+      \draw[decorate,decoration={brace,mirror,amplitude=4pt}] (0.7,-0.45) -- (4.3,-0.45)
+        node[midway,below=5pt,lab,align=center]{guards true:\\$i < l = 4$};
+      \draw[decorate,decoration={brace,mirror,amplitude=4pt}] (4.7,-0.45) -- (6.3,-0.45)
+        node[midway,below=5pt,lab,align=center]{guards false:\\$s_5, s_6$ free};
+    \end{tikzpicture}
+    \bigskip
+
+    \footnotesize
+    \begin{itemize}
+      \item A shortest cycle exists if a cycle does; no edge of a $\TC(R_j)$ shortcuts it.
+      \item Other rules on the $s_i$ (\rn{TC-Down}, \dots) are valid or pick their own fresh
+        elements after the $s_i$.
+    \end{itemize}
+  \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Is introducing elements at last call sound? (2/2)}
+  \footnotesize
+  Every lemma holds in $M'$ ($\cyc{R}$ true in $M$, shortest cycle with $L-1$ edges,
+  $G = \TC(R_1)\cup\dots\cup\TC(R_k)$):
+  \begin{center}
+  \scriptsize\renewcommand{\arraystretch}{1.1}
+  \begin{tabular}{@{}L{2.3cm}L{8.8cm}L{3.0cm}@{}}
+    \toprule
+    rule & index up to $L$: the guard holds, the conclusion too & index beyond $L$ \\
+    \midrule
+    \rn{Inst-Cycle} & $1 < L$: the cycle has an edge & --- \\
+    \rn{Unroll}$_i$ & $i < L$: $(s_i,s_{i+1})$ is an edge of the cycle, so it is in some
+      $\TC(R_j)$ & $i < l$ false \\
+    \rn{Split-Len}$_r$ & $r < L$: $r < l$; \ $r = L$: $l = L$ and $s_L = s_1$ & $r \le l$ false \\
+    \rn{Alternate}$_i$, \rn{Alt-Close}$_i$ & two consecutive edges in $\TC(R_j)$ give, by
+      transitivity, one edge of $\TC(R_j)$: a cycle of $G$ with one edge less & $i<l$,
+      $l=i+1$ false \\
+    \rn{Chord}$_{q,r}$ & $(s_q,s_r)\in\TC(R_j)$ skips $r-q\ge 2$ edges: a shorter cycle (for
+      $(1,L)$: a self-loop, 1 edge) & $r \le l$ false \\
+    \rn{Distinct}$_{q,r}$ & $s_q = s_r$ closes the cycle $s_q..s_r$ of $r-q < L-1$ edges & $r \le l$
+      false \\
+    \rn{Branch}$_N$ & $N \ne L$: $l = N$ is false. $N = L$: if every edge were in $\TC(S)$,
+      $S$ would be cyclic in $M$, but $M \models \neg\cyc{S}$ & --- \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \textbf{$\cyc{R}$ false in $M$}: every premise contains $\cyc{R}$, except \rn{Unroll}$_i$, whose
+  guard $i < l = 1$ is false.
+  \medskip
+
+  \textbf{The other direction} (no wrong \sm{sat}): a quiet last call means that the model
+  satisfies \rn{Unroll}$_1..$\rn{Unroll}$_{N-1}$ and \rn{Split-Len}$_N$ with $l = N$: it has a
+  cycle (see \emph{Model construction}). Without a practical $N$: \sm{unknown}.
+\end{frame}
+
+\begin{frame}{Grounding at last call: the algorithm}
+  \begin{columns}[T]
+  \begin{column}{0.54\textwidth}
+    \begin{algorithm}[H]
+      \caption{last call: closures, joins}
+      collect the members of every relation, by representatives\;
+      \ForEach{membership $(a,b)\in\TC(R)$}{
+        \If{no path $a\to\dots\to b$ in the graph of the known members of $R$}{
+          \lIf{lazy}{send \rn{TC-Down} for $(a,b)$}
+          \lElse{send \rn{Ground-TC} \hfill (hammer)}
+        }
+      }
+      \If{hammer}{
+        \ForEach{membership $(x,z)\in A;B$}{
+          \If{no known $(x,y)\in A$ with $(y,z)\in B$}{
+            send \rn{Ground-Join}\;
+          }
+        }
+      }
+    \end{algorithm}
+    \footnotesize
+    \begin{itemize}
+      \item Closure (\sm{isTCReachable}): depth-first search from $a$ over the members of
+        $R$ only.
+      \item Join (\sm{isJoinReachable}): for each known $(x,y)\in A$, look up $(y,z)$ in the
+        membership trie of $B$.
+    \end{itemize}
+  \end{column}
+  \begin{column}{0.44\textwidth}
+    \centering
+    \begin{tikzpicture}[x=1.1cm,y=1cm]
+      \node[ev] (a) at (0,0) {$a$};
+      \node[ev] (b) at (1.4,0) {$b$};
+      \node[ev] (c) at (2.8,0) {$c$};
+      \node[ev] (d) at (1.4,-1.6) {$d$};
+      \draw[arr] (a) -- node[lab,above]{$R$} (b);
+      \draw[arr] (b) -- node[lab,above]{$R$} (c);
+      \draw[arr,dashed,newc] (a) to[bend left=45] node[lab,above]{$(a,c)\in\TC(R)$: path} (c);
+      \draw[arr,dashed,red!70!black] (a) to[bend right=25] node[lab,left]{$(a,d)\in\TC(R)$?} (d);
+    \end{tikzpicture}
+    \medskip
+
+    \footnotesize
+    \raggedright
+    $R = \{(a,b),(b,c)\}$: $(a,c)$ is explained, $(a,d)$ is not.
+    \begin{itemize}
+      \item lazy: \rn{TC-Down} adds $(a,k_1),(k_2,d)\in R$, \dots;
+      \item hammer: \rn{Ground-TC} refutes this model: the SAT solver must change $R$, an
+        equality, or the membership.
+    \end{itemize}
+  \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Grounding conflicts: \rn{Ground-TC} and \rn{Ground-Join}}
+  \begin{columns}[T]
+  \begin{column}{0.56\textwidth}
+    \footnotesize\mprset{sep=1.0em}
+    \begin{mathpar}
+      \inferrule*[right=\rn{Ground-TC}]{(a,b)\in\TC(R) \\ R = \{m_1,..,m_n\} \\
+        \mathit{distinct}(a, b, \vec e)}{\bot}
+      \\
+      \inferrule*[right=\rn{Ground-Join}]{(x,z)\in A;B \\ A = \{m_1,..,m_n\} \\
+        B = \{p_1,..,p_o\} \\ \mathit{distinct}(x, z, \vec e)}{\bot}
+    \end{mathpar}
+    $\{m_1,..,m_n\}$: the known members. $\vec e$: the representatives of the elements of the
+    $m_i$, $p_j$ (the equalities between terms and representatives are premises too).
+    \medskip
+
+    \textbf{Valid}: under the premises, $R$ is exactly the $n$ pairs, over pairwise distinct
+    elements, so $\TC(R)$ is the set of paths of that graph, and the search found none from $a$
+    to $b$. Likewise for $A;B$. No term is introduced: the SAT solver must change the model.
+
+  \end{column}
+  \begin{column}{0.42\textwidth}
+    \centering
+    \begin{tikzpicture}[x=1cm,y=1cm]
+      \node[ev] (a) at (0,1.6) {$a$};
+      \node[ev] (b) at (1.6,1.6) {$b$};
+      \node[ev] (d) at (1.6,0.2) {$d$};
+      \node[ev] (c) at (3.2,0.2) {$c$};
+      \draw[arr] (a) -- node[lab,above]{$A$} (b);
+      \draw[arr] (d) -- node[lab,below]{$B$} (c);
+      \draw[arr,dashed,red!70!black] (a) to[bend right=50] node[lab,below left]{$(a,c)\in A;B$?} (c);
+      \draw[thick,dotted,newc] (b) -- node[lab,right]{$b = d$?} (d);
+    \end{tikzpicture}
+    \medskip
+
+    \footnotesize
+    $(a,c)\in A;B$ with $A=\{(a,b)\}$, $B=\{(d,c)\}$:
+    \begin{itemize}
+      \item $a,b,c,d$ distinct: the membership is impossible, the conflict is valid;
+      \item $b = d$: the membership holds. The premise $\mathit{distinct}(a,c,b,d)$ is false,
+        so the conflict does not exclude this model.
+    \end{itemize}
+    Without it, \rn{Ground-Join} refuted $b=d$ too: a wrong \sm{unsat} (fixed in this PR;
+    \rn{Ground-TC} had it).
+  \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Model construction: why \sm{sat} is correct}
+  \footnotesize\vspace{-1mm}
+  \textbf{How cvc5 builds the model} (\sm{collectModelValues}): every set equivalence class
+  gets the union of the singletons of its known members. Relational terms are \emph{not}
+  recomputed, so \sm{sat} is correct only if, when the last call is quiet, the member lists
+  agree with the operators:
+  \begin{center}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{@{}L{2.4cm}L{5.4cm}L{6.2cm}@{}}
+    \toprule
+    term / literal & every required member is there & every member is justified \\
+    \midrule
+    $\TC(R)$ & \rn{TC-Up}: the pairs of every path of $R$ &
+      \rn{TC-Down} (full effort or lazy), or no unexplained member (hammer) \\
+    $A;B$ & \rn{Join-Compose} & \rn{Join-Split}, or no unexplained member (hammer) \\
+    \midrule
+    $\cyc{R}$ & \multicolumn{2}{L{11.6cm}@{}}{quiet last call: $c \ge N$, and the model satisfies
+      \rn{Unroll}$_i$ ($i < N = l$) and \rn{Split-Len}$_N$, so $s_1\to\dots\to s_N = s_1$ with
+      every edge in some $\TC(R_j)$, which is the closure of $R_j$ in the model (rows above):
+      $R$ has a cycle. Self-loop form: $(s,s)\in\TC(R)$.} \\
+    $\neg\cyc{u}$ & \multicolumn{2}{L{11.6cm}@{}}{\rn{Register} makes $\TC(u)$ a term;
+      \rn{TC-Up} puts $(a,a)$ into it for any cycle of the members of $u$; \rn{Acyclic-Down}
+      refutes that: $u$ is acyclic in the model.} \\
+    $\fun{R}$, $\neg\fun{R}$ & \multicolumn{2}{L{11.6cm}@{}}{\rn{Fun-UF} / \rn{Fun-Pairs}: no
+      $(x,y_1),(x,y_2)$ with $y_1\ne y_2$; \rn{Not-Fun}: two such members.} \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
 \end{frame}
 
 \begin{frame}{Options and defaults}
