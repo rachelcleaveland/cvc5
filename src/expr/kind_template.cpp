@@ -73,7 +73,7 @@ bool isClosureKind(cvc5::internal::Kind k)
     case Kind::WITNESS:
     case Kind::SET_COMPREHENSION:
     case Kind::MATCH_BIND_CASE:
-    case Kind::RELATION_ACYCLIC_PATTERN: return true;
+    case Kind::RELATION_CYCLIC_PATTERN: return true;
 
     default: return false;
   }

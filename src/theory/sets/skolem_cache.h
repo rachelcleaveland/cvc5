@@ -70,9 +70,9 @@ class SkolemCache
     SK_NOT_FUNCTIONAL1,
     SK_NOT_FUNCTIONAL2,
     SK_NOT_FUNCTIONAL3,
-    // not acyclic-pattern(t1...tl, (R1,...,Rm), p) =>
-    //    exists w1,...,wl. distinct(w1,...,wl)
-    //    ^ forall i in [1,l). ((wi, w{i+1}) in R1 V ... V (wi, w{i+1}) in Rm)
+    // (rel.cyclic-pattern (t1...tl) R p) =>
+    //    exists w1,...,wl.
+    //    (w1, w2) in R ^ ... ^ (w{l-1}, wl) in R ^ (wl, w1) in R
     //    ^ p[w1/t1,...,wl/tl]
     SK_CYCLE_PATTERN_ELEM,
   };

@@ -555,21 +555,34 @@ void TheorySetsRels::collectRelsInfo()
             applyInstCycleRule(eqc_node);
           }
         }
-        // collect acyclic-pattern info
-        else if (eqc_node.getKind() == Kind::RELATION_ACYCLIC_PATTERN)
+        // collect cyclic-pattern info
+        else if (eqc_node.getKind() == Kind::RELATION_CYCLIC_PATTERN)
         {
-          if (is_true_eq)
+          if (!is_true_eq)
           {
-            // Key by the union's representative, mirroring d_acyclic_cache,
-            // so checkAcyclicPatternDown finds it by looking up the same
-            // representative it uses to search known members.
-            Node u = mkRelUnion(TupleUtils::getTupleElements(eqc_node[1]));
-            d_acyclic_pattern_cache[getRepresentative(u)].push_back(eqc_node);
+            // (not (rel.cyclic-pattern boundVars R body)): no closed walk
+            // over R satisfies body. Key by R's own representative,
+            // mirroring d_acyclic_cache, so checkAcyclicPatternDown finds it
+            // by looking up the same representative it uses to search known
+            // members. The cache holds the literal
+            // (not (rel.cyclic-pattern boundVars R body)).
+            Node u = eqc_node[1];
+            d_acyclic_pattern_cache[getRepresentative(u)].push_back(
+                eqc_node.negate());
+
+            // checkAcyclicPatternDown searches R's own known members (see
+            // d_rReps_memberReps_cache), which are only populated if R is
+            // registered as a term of interest to the solver -- same
+            // registration gap as (not (rel.cyclic R)), and the same fix:
+            // see the comment on the RELATION_CYCLIC branch above.
+            Node tc = nodeManager()->mkNode(Kind::RELATION_TCLOSURE, u);
+            Node reg = nodeManager()->mkNode(Kind::SET_SUBSET, u, tc);
+            sendInfer(
+                reg, InferenceId::SETS_RELS_ACYCLIC_PATTERN_DOWN, eqc_node.negate());
           }
           else
           {
-            applyInstCyclePatternRule(
-                eqc_node[0], eqc_node[1], eqc_node[2], eqc_node.negate());
+            applyInstCyclePatternRule(eqc_node);
           }
         }
         // collect relational terms info
@@ -2414,34 +2427,34 @@ Node TheorySetsRels::instantiateBody(Node boundVars,
 }
 
 /*
- * INST_CYCLE_PRED:   NOT (rel.acyclic-pattern boundVars relTuple body)
+ * INST_CYCLE_PRED:   (rel.cyclic-pattern boundVars R body) IN Delta*
  *   ------------------------------------------------------------------
- *   C := C U {(w1,w2) in U, ..., (wl,w1) in U,
+ *   C := C U {(w1,w2) in R, ..., (wl,w1) in R,
  *             body[w1/t1,...,wl/tl]}
- * for fresh w1,...,wl, where l = boundVars' length and U is the union of
- * relTuple's relations. Unlike applyInstCycleRule, this fires
- * unconditionally in one shot: the pattern length is fixed by boundVars'
- * own length (there is no unknown/existential length to case-split and
- * incrementally unroll), so all l skolems and the full conclusion are
- * introduced at once.
+ * for fresh w1,...,wl, where l = boundVars' length. R may itself be a union
+ * of other relations, but no decomposition of it is needed here (unlike
+ * applyInstCycleRule): this rule only ever checks membership in R as a
+ * whole, it never needs to know which union operand a given edge came from.
+ * Unlike applyInstCycleRule, this fires unconditionally in one shot: the
+ * pattern length is fixed by boundVars' own length (there is no
+ * unknown/existential length to case-split and incrementally unroll), so
+ * all l skolems and the full conclusion are introduced at once.
  *
  * EXPERIMENT: distinct(w1,...,wl) removed from the conclusion (was
  * previously required -- see the commented-out block below). w1,...,wl may
  * now witness a closed walk that revisits nodes, not just a simple cycle.
  */
-void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
-                                               Node relTuple,
-                                               Node body,
-                                               Node exp)
+void TheorySetsRels::applyInstCyclePatternRule(Node atom)
 {
-  Trace("rels-debug") << "\n[Theory::Rels] *********** Applying "
-                         "RELATION_INST_CYCLE_PATTERN rule on relation tuple "
-                         "= "
-                      << relTuple << ", body = " << body
-                      << " and explanation " << exp << std::endl;
+  Assert(atom.getKind() == Kind::RELATION_CYCLIC_PATTERN);
+  Node boundVars = atom[0];
+  Node relUnion = atom[1];
+  Node body = atom[2];
 
-  Assert(exp.getKind() == Kind::NOT);
-  Node atom = exp[0];
+  Trace("rels-debug") << "\n[Theory::Rels] *********** Applying "
+                         "RELATION_INST_CYCLE_PATTERN rule on "
+                      << atom << std::endl;
+
   if (d_acyclic_pattern_instantiated.find(atom)
       != d_acyclic_pattern_instantiated.end())
   {
@@ -2450,12 +2463,10 @@ void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
   d_acyclic_pattern_instantiated.insert(atom);
 
   NodeManager* nm = nodeManager();
-  std::vector<Node> rels = TupleUtils::getTupleElements(relTuple);
-  Node relUnion = mkRelUnion(rels);
   size_t l = boundVars.getNumChildren();
 
-  // Key the skolems on the acyclic-pattern atom itself (not just relUnion),
-  // so distinct acyclic-pattern instances over the same relations -- a
+  // Key the skolems on the cyclic-pattern atom itself (not just relUnion),
+  // so distinct cyclic-pattern instances over the same relation -- a
   // different body, or more than one pattern asserted -- each get their own
   // skolem sequence instead of colliding with each other or with
   // applyInstCycleRule's SK_CYCLE_ELEM sequence for the base predicate.
@@ -2494,22 +2505,21 @@ void TheorySetsRels::applyInstCyclePatternRule(Node boundVars,
   Node conc = conjuncts.size() == 1 ? conjuncts[0]
                                     : nm->mkNode(Kind::AND, conjuncts);
 
-  Trace("rels-cycles") << "InstCyclePatternRule: exp = " << exp
+  Trace("rels-cycles") << "InstCyclePatternRule: atom = " << atom
                        << ", conc = " << conc << std::endl;
 
-  sendInfer(conc, InferenceId::SETS_RELS_INST_CYCLE_PATTERN, exp);
+  sendInfer(conc, InferenceId::SETS_RELS_INST_CYCLE_PATTERN, atom);
 }
 
 /*
- * ACYCLIC_DOWN_PRED:  (w1,w2) in U ... (wl,w1) in U
- *                     (rel.acyclic-pattern boundVars relTuple body) in Delta*
+ * ACYCLIC_DOWN_PRED:  (w1,w2) in R ... (wl,w1) in R
+ *                     NOT (rel.cyclic-pattern boundVars R body) in Delta*
  *   ------------------------------------------------------------------
  *                     Delta := Delta U {NOT body[w1/t1,...,wl/tl]}
- * where t1,...,tl are boundVars' elements, U = union of relTuple's
- * relations, searching U's currently-known members for closed walks
- * w1,...,wl (l = boundVars' length). Fires unconditionally for every such
- * walk found: see fireAcyclicPatternDown for why this remains sound without
- * gating on provable disequality.
+ * where t1,...,tl are boundVars' elements, searching R's currently-known
+ * members for closed walks w1,...,wl (l = boundVars' length). Fires
+ * unconditionally for every such walk found: see fireAcyclicPatternDown for
+ * why this remains sound without gating on provable disequality.
  *
  * EXPERIMENT: this rule no longer requires w1,...,wl to be provably distinct
  * before firing (was previously an antecedent conjunct -- see the
@@ -2543,7 +2553,9 @@ void TheorySetsRels::checkAcyclicPatternDown()
 
     for (const Node& atom : cacheEntry.second)
     {
-      size_t l = atom[0].getNumChildren();
+      // atom is (not (rel.cyclic-pattern boundVars R body)); atom[0] is the
+      // inner positive RELATION_CYCLIC_PATTERN term.
+      size_t l = atom[0][0].getNumChildren();
       for (const auto& startEntry : adj)
       {
         std::vector<size_t> pathIdx;
@@ -2621,6 +2633,7 @@ void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
                                             const std::vector<size_t>& pathIdx,
                                             Node atom)
 {
+  Assert(atom.getKind() == Kind::NOT);
   NodeManager* nm = nodeManager();
   size_t l = pathIdx.size();
 
@@ -2636,6 +2649,8 @@ void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
     ws.push_back(TupleUtils::nthElementOfTuple(members[pathIdx[i]], 0));
   }
 
+  // atom is the literal (not (rel.cyclic-pattern boundVars R body)) -- the
+  // actual asserted fact that justifies this conclusion.
   std::vector<Node> reasonConjuncts;
   reasonConjuncts.push_back(atom);
   std::map<Node, Node> repsMap;  // representative -> literal term
@@ -2679,7 +2694,10 @@ void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
                     ? reasonConjuncts[0]
                     : nm->mkNode(Kind::AND, reasonConjuncts);
 
-  Node conc = nm->mkNode(Kind::NOT, instantiateBody(atom[0], atom[2], ws));
+  // atom[0] is the inner positive RELATION_CYCLIC_PATTERN term: atom[0][0]
+  // is boundVars, atom[0][2] is body.
+  Node conc =
+      nm->mkNode(Kind::NOT, instantiateBody(atom[0][0], atom[0][2], ws));
 
   Trace("rels-cycles") << "AcyclicPatternDown: " << reason << " => " << conc
                        << std::endl;
@@ -3695,7 +3713,7 @@ bool TheorySetsRels::isRelationKind(Kind k)
          || k == Kind::RELATION_JOIN || k == Kind::RELATION_TABLE_JOIN
          || k == Kind::RELATION_TCLOSURE || k == Kind::RELATION_IDEN
          || k == Kind::RELATION_JOIN_IMAGE || k == Kind::RELATION_CYCLIC
-         || k == Kind::RELATION_ACYCLIC_PATTERN
+         || k == Kind::RELATION_CYCLIC_PATTERN
          || k == Kind::RELATION_RCLOSURE || k == Kind::RELATION_RTCLOSURE
          || k == Kind::RELATION_IS_FUNCTIONAL;
 }

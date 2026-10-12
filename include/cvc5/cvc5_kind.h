@@ -3995,7 +3995,7 @@ enum ENUM(Kind)
    *
    *   - TermManager::mkOp(Kind, const std::vector<uint32_t>&)
    */
-  EVALUE(RELATION_ACYCLIC_PATTERN),
+  EVALUE(RELATION_CYCLIC_PATTERN),
   /**
    * Relation join image.
    *

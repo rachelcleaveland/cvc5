@@ -317,19 +317,21 @@ children = 1
 comment  = "relation cyclic: (rel.cyclic R) iff (x, x) in (rel.tclosure R) for some x"
 typerule = "::cvc5::internal::theory::sets::RelCyclicTypeRule"
 
-# (rel.acyclic-pattern ((t1 T) ... (tl T)) (tuple R1 ... Rk) P) holds iff no
-# closed walk over R1 U ... U Rk through exactly the pairwise-distinct terms
-# t1,...,tl (i.e. (t1,t2) in the union, ..., (tl,t1) in the union) satisfies
-# P. This is a closure: (t1 T) ... (tl T) is a bound variable list fixing
-# the pattern length l and the relations' common domain type T, and P is a
-# Boolean term over t1,...,tl, not a separate function-typed value, so this
-# predicate never requires higher-order reasoning to state or use.
+# (rel.cyclic-pattern ((t1 T) ... (tl T)) R P) holds iff some closed walk
+# over R through t1,...,tl (i.e. (t1,t2) in R, ..., (tl,t1) in R) satisfies
+# P. R is a single binary relation (it may itself be built as a union of
+# other relations; no special decomposition of it is required, since the
+# predicate only ever checks membership in R directly). This is a closure:
+# (t1 T) ... (tl T) is a bound variable list fixing the pattern length l and
+# R's domain type T, and P is a Boolean term over t1,...,tl, not a separate
+# function-typed value, so this predicate never requires higher-order
+# reasoning to state or use.
 [[kinds]]
 type     = "operator"
-name     = "RELATION_ACYCLIC_PATTERN"
+name     = "RELATION_CYCLIC_PATTERN"
 children = 3
-comment  = "relation acyclic pattern"
-typerule = "::cvc5::internal::theory::sets::RelAcyclicPatternTypeRule"
+comment  = "relation cyclic pattern"
+typerule = "::cvc5::internal::theory::sets::RelCyclicPatternTypeRule"
 
 [[kinds]]
 type     = "operator"

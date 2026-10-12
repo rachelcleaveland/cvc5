@@ -1330,7 +1330,7 @@ std::string Smt2Printer::smtKindString(Kind k)
     case Kind::RELATION_RCLOSURE: return "rel.rclosure";
     case Kind::RELATION_RTCLOSURE: return "rel.rtclosure";
     case Kind::RELATION_CYCLIC: return "rel.cyclic";
-    case Kind::RELATION_ACYCLIC_PATTERN: return "rel.acyclic-pattern";
+    case Kind::RELATION_CYCLIC_PATTERN: return "rel.cyclic-pattern";
     case Kind::RELATION_IDEN: return "rel.iden";
     case Kind::RELATION_IS_FUNCTIONAL: return "rel.is-functional";
     case Kind::RELATION_JOIN_IMAGE: return "rel.join_image";

@@ -1106,93 +1106,67 @@ TypeNode RelCyclicTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->booleanType();
 }
 
-TypeNode RelAcyclicPatternTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
-                                                   CVC5_UNUSED TNode n)
+TypeNode RelCyclicPatternTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+                                                  CVC5_UNUSED TNode n)
 {
   return TypeNode::null();
 }
-TypeNode RelAcyclicPatternTypeRule::computeType(NodeManager* nodeManager,
-                                                TNode n,
-                                                bool check,
-                                                std::ostream* errOut)
+TypeNode RelCyclicPatternTypeRule::computeType(NodeManager* nodeManager,
+                                               TNode n,
+                                               bool check,
+                                               std::ostream* errOut)
 {
-  Assert(n.getKind() == Kind::RELATION_ACYCLIC_PATTERN);
+  Assert(n.getKind() == Kind::RELATION_CYCLIC_PATTERN);
   if (check)
   {
     if (n[0].getKind() != Kind::BOUND_VAR_LIST)
     {
       if (errOut)
       {
-        (*errOut) << "first argument of acyclic-pattern is not a bound "
+        (*errOut) << "first argument of cyclic-pattern is not a bound "
                      "variable list";
       }
       return TypeNode::null();
     }
-    TypeNode argType = n[1].getTypeOrNull();
-    if (!argType.isTuple())
+    // Same shape as (rel.cyclic R): a single binary relation. Track the
+    // domain type so it can be checked against the bound variables' types
+    // below.
+    TypeNode relType = n[1].getTypeOrNull();
+    if (!relType.isRelation())
     {
       if (errOut)
       {
-        (*errOut) << "acyclic-pattern operates on a non-tuple "
-                     "second argument";
+        (*errOut) << "cyclic-pattern operates on a non-relation";
       }
       return TypeNode::null();
     }
-    // Same shape as (rel.acyclic A): a tuple of same-domain binary
-    // relations. Track the common domain type so it can be checked against
-    // the bound variables' types below.
-    TypeNode domainType;
-    for (const TypeNode& relType : argType.getTupleTypes())
+    std::vector<TypeNode> tupleTypes = relType[0].getTupleTypes();
+    if (tupleTypes.size() != 2)
     {
-      if (!relType.isRelation())
+      if (errOut)
       {
-        if (errOut)
-        {
-          (*errOut) << "acyclic-pattern tuple element is not a relation";
-        }
-        return TypeNode::null();
+        (*errOut) << "cyclic-pattern operates on a non-binary relation";
       }
-      std::vector<TypeNode> tupleTypes = relType[0].getTupleTypes();
-      if (tupleTypes.size() != 2)
-      {
-        if (errOut)
-        {
-          (*errOut) << "acyclic-pattern operates on non-binary relation";
-        }
-        return TypeNode::null();
-      }
-      if (!tupleTypes[0].isComparableTo(tupleTypes[1]))
-      {
-        if (errOut)
-        {
-          (*errOut)
-              << "acyclic-pattern operates on incompatible binary relation";
-        }
-        return TypeNode::null();
-      }
-      if (domainType.isNull())
-      {
-        domainType = tupleTypes[0];
-      }
-      else if (!domainType.isComparableTo(tupleTypes[0]))
-      {
-        if (errOut)
-        {
-          (*errOut)
-              << "acyclic-pattern relations do not share a common domain "
-                 "type";
-        }
-        return TypeNode::null();
-      }
+      return TypeNode::null();
     }
+    if (!tupleTypes[0].isComparableTo(tupleTypes[1]))
+    {
+      if (errOut)
+      {
+        (*errOut) << "cyclic-pattern operates on a binary relation whose "
+                     "columns have different types";
+      }
+      return TypeNode::null();
+    }
+    TypeNode domainType = tupleTypes[0];
     for (const Node& v : n[0])
     {
-      if (!domainType.isNull() && !v.getTypeOrNull().isComparableTo(domainType))
+      if (!v.getTypeOrNull().isComparableTo(domainType))
       {
         if (errOut)
         {
-          (*errOut) << "acyclic-pattern bound variable type does not match "
-                       "the relations' domain type";
+          (*errOut) << "cyclic-pattern bound variable type does not match "
+                       "the relation's domain type";
         }
         return TypeNode::null();
       }
@@ -1202,7 +1176,7 @@ TypeNode RelAcyclicPatternTypeRule::computeType(NodeManager* nodeManager,
     {
       if (errOut)
       {
-        (*errOut) << "body of acyclic-pattern is not Boolean";
+        (*errOut) << "body of cyclic-pattern is not Boolean";
       }
       return TypeNode::null();
     }

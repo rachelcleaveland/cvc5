@@ -356,13 +356,12 @@ struct RelCyclicTypeRule
 };
 
 /**
- * Type rule for (rel.acyclic-pattern ((t1 T) ... (tl T)) A P), a closure
+ * Type rule for (rel.cyclic-pattern ((t1 T) ... (tl T)) R P), a closure
  * whose bound variable list (t1 ... tl, l >= 1) must all share a common
- * type T, where A is a tuple of binary relations of type (Relation T T) for
- * that same T, and P is a Boolean term over t1 ... tl. The return type is
- * boolean.
+ * type T, where R is a binary relation of type (Relation T T), and P is a
+ * Boolean term over t1 ... tl. The return type is boolean.
  */
-struct RelAcyclicPatternTypeRule
+struct RelCyclicPatternTypeRule
 {
   static TypeNode preComputeType(NodeManager* nm, TNode n);
 
