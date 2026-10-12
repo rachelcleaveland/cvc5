@@ -12,8 +12,6 @@
 
 #include "theory/sets/theory_sets_rels.h"
 
-#include "theory/decision_manager.h"
-
 #include <algorithm>
 
 #include "expr/dtype.h"
@@ -21,6 +19,7 @@
 #include "options/sets_options.h"
 #include "theory/datatypes/project_op.h"
 #include "theory/datatypes/tuple_utils.h"
+#include "theory/decision_manager.h"
 #include "theory/incomplete_id.h"
 #include "theory/sets/theory_sets.h"
 #include "theory/sets/theory_sets_private.h"
