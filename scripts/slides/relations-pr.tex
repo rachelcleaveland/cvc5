@@ -1102,6 +1102,125 @@
   \end{columns}
 \end{frame}
 
+%=====================================================================
+\section{Evidence for every rule}
+
+\begin{frame}{Evidence: how it was measured (\sm{scripts/evidence})}
+  \small
+  \begin{itemize}
+    \item A separate build (\sm{scripts/evidence/rule-ids.patch}) gives every rule its own
+      inference id (Alternate, Alt-Close, Chord, Distinct, Backward, Inclusion, Branch, Register,
+      the five kinds of closure induction, the last-call completion, the lazy \rn{TC-Down}) and an
+      option \sm{--rels-evidence-disable=IDS} that drops the lemmas of the given rules.
+    \item \textbf{Usage}: every (benchmark, configuration) pair the portfolio solves (42 pairs, 13
+      benchmarks, 7 configurations) is rerun with \sm{--stats-internal -o lemmas}: how many
+      lemmas each rule sends, and real lemmas of each rule.
+    \item \textbf{Ablation}: every pair is rerun once per rule that fired in it, with that rule
+      disabled, and once per group of rules that can replace one another (all minimality rules,
+      all kinds of closure induction): \textbf{763 runs}. Time limit max(60 s, 5$\times$ the
+      original time); \sm{--check-models} on the satisfiable files.
+    \item Dropping lemmas can never give a wrong \sm{unsat}; it can give a wrong \sm{sat} (the
+      rule is needed for the model to be correct) or lose the benchmark (the rule is needed for
+      the proof, or to find it in time).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Which rule each benchmark needs (1/3): the cycle witness}
+  \centering\tiny\setlength{\tabcolsep}{2pt}
+  \input{figures/evidence-matrix-1.tex}
+  \medskip
+
+  {\scriptsize Bold: without the rule the benchmark is \textbf{lost} (timeout or \sm{unknown} within
+  max(60 s, 5$\times$ the time)); \bad{red}: \textbf{wrong} without it (\sm{sat} on an unsat file, or
+  a failed \sm{--check-models}); $\cdot$: the rule fires but the benchmark is solved without it;
+  empty: it does not fire. Benchmarks: plsc1r $=$ plsc-1-th-just-rf, tso1n $=$ tso-1-th-no-ltts, \dots\par}
+\end{frame}
+
+\begin{frame}{Which rule each benchmark needs (2/3): acyclicity, induction, Fun-UF}
+  \centering\tiny\setlength{\tabcolsep}{2pt}
+  \input{figures/evidence-matrix-2.tex}
+  \medskip
+
+  {\scriptsize Bold: without the rule the benchmark is \textbf{lost} (timeout or \sm{unknown} within
+  max(60 s, 5$\times$ the time)); \bad{red}: \textbf{wrong} without it (\sm{sat} on an unsat file, or
+  a failed \sm{--check-models}); $\cdot$: the rule fires but the benchmark is solved without it;
+  empty: it does not fire. Benchmarks: plsc1r $=$ plsc-1-th-just-rf, tso1n $=$ tso-1-th-no-ltts, \dots\par}
+\end{frame}
+
+\begin{frame}{Which rule each benchmark needs (3/3): closures and joins}
+  \centering\tiny\setlength{\tabcolsep}{2pt}
+  \input{figures/evidence-matrix-3.tex}
+  \medskip
+
+  {\scriptsize Bold: without the rule the benchmark is \textbf{lost} (timeout or \sm{unknown} within
+  max(60 s, 5$\times$ the time)); \bad{red}: \textbf{wrong} without it (\sm{sat} on an unsat file, or
+  a failed \sm{--check-models}); $\cdot$: the rule fires but the benchmark is solved without it;
+  empty: it does not fire. Benchmarks: plsc1r $=$ plsc-1-th-just-rf, tso1n $=$ tso-1-th-no-ltts, \dots\par}
+  \medskip
+
+  {\scriptsize Not in the tables because they never fire on a solved pair: \rn{Same-Operands}, the
+  anchor conflict (\sm{false} when every operand is inside $\TC(S)$), \rn{Fun-Pairs} (only with
+  \sm{--rels-functional-mode=pairs}), \rn{Not-Fun} (no negated \sm{rel.is-functional}),
+  \rn{Ground-TC}, \rn{Ground-Join}.\par}
+\end{frame}
+
+\begin{frame}{A lemma of each rule, from a benchmark where it is needed (1/3)}
+  \centering\tiny
+  \input{figures/evidence-examples-1.tex}
+  \medskip
+
+  {\scriptsize Lemmas as cvc5 sent them (\sm{-o lemmas}), with \sm{let} expanded: \sm{cyc$n$}, the
+  witness elements; \sm{cyclen$n$}, its length; \sm{X+}, \sm{rel.tclosure}. The benchmark is one where
+  the rule is needed (else where it fires).\par}
+\end{frame}
+
+\begin{frame}{A lemma of each rule, from a benchmark where it is needed (2/3)}
+  \centering\tiny
+  \input{figures/evidence-examples-2.tex}
+  \medskip
+
+  {\scriptsize \sm{cycedge$n$}: the fresh pair of \rn{Inclusion}; the closure-induction lemmas show the
+  superset they use: \sm{po+} (in $\TC(X)$), \sm{co} transitive, \sm{Read}$\times$\sm{Write} with
+  \sm{Read} $\cap$ \sm{Write} $= \emptyset$, \sm{loc} (an intersection), \sm{Event}$\times$\sm{Event}
+  (an asserted superset).\par}
+\end{frame}
+
+\begin{frame}{A lemma of each rule, from a benchmark where it is needed (3/3)}
+  \centering\tiny
+  \input{figures/evidence-examples-3.tex}
+  \medskip
+
+  {\scriptsize \sm{rfun$n$}: the skolem function of \rn{Fun-UF}; \sm{stc$n$}, \sm{srj$n$}: the fresh
+  elements of \rn{TC-Down} and \rn{Join-Split}.\par}
+\end{frame}
+
+\begin{frame}{What the evidence says}
+  \footnotesize
+  \begin{itemize}
+    \item \textbf{Essential}: the witness (\rn{Inst-Cycle}, \rn{Unroll}, \rn{Split-Len}, the
+      last-call completion): without each, 7-8 (benchmark, configuration) pairs are lost and 4-14
+      answered \textbf{wrongly} (no cycle behind \sm{(rel.cyclic R)}). \rn{Acyclic-Down}: 13 pairs
+      lost, 6 wrong. \rn{Chord}: 12 lost.
+    \item \textbf{Needed, in specific configurations}: \rn{Inclusion} (7: FMF, FMF+R, noFMF+R);
+      closure induction (8 as a group, every kind needed somewhere, only in the R configurations);
+      \rn{Fun-UF} (5: FMF+R, noFMF+R); \rn{Alternate}, \rn{Distinct}, \rn{Backward}, \rn{Branch},
+      \rn{Cycle-Def} (one benchmark each). All minimality rules together: 21, including the
+      satisfiable files (minimality also guides the model search).
+    \item \textbf{Redundant on these benchmarks}: \rn{Alt-Close} (fires on 37 pairs, never needed
+      alone; the other minimality rules cover it), \rn{Register} (fires on 42, never needed: the
+      closure terms it registers exist anyway in these benchmarks).
+    \item \textbf{Never fire}: \rn{Same-Operands}, the anchor conflict, \rn{Fun-Pairs},
+      \rn{Not-Fun}, \rn{Ground-TC}, \rn{Ground-Join}. The hammer solves its 3 benchmarks
+      \emph{without} a grounding conflict: its gain is not splitting closures and joins.
+    \item \textbf{Needed for correct models only}: lazy and eager \rn{TC-Down} (wrong models of the
+      \sm{no-ltts} files without them, never needed for unsat).
+    \item \textbf{Existing rules}: \rn{Join-Compose} (15 lost, 15 wrong), \rn{Join-Split} (11, 10),
+      \rn{TC-Up} (5, 5).
+  \end{itemize}
+  {\scriptsize Caveats: one rule at a time underestimates rules that replace one another (hence the
+  groups); ``lost'' means not within 5$\times$ the time.\par}
+\end{frame}
+
 \begin{frame}{Testing}
   \footnotesize
   \begin{itemize}

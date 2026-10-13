@@ -13,6 +13,7 @@ litmus-template benchmarks of relational-solver-benchmarks. They are not part of
 | `pr_report.py` | the charts (cactus plots with time on x, bar chart) and markdown tables of the PR description; needs matplotlib |
 | `acyclic_to_cyclic.py` | converts SMT-LIB files from `rel.acyclic` to `rel.cyclic` |
 | `slides/` | the presentation of this PR (`relations-pr.tex`/`.pdf`) and its figure generator |
+| `evidence/` | which rule each solved benchmark needs: a patch with one inference id per rule and an option to disable rules, the usage and ablation runner, the tables of the slides (`evidence/README.md`) |
 
 Requirements: python3 (>= 3.8) and git; matplotlib for `pr_report.py`. Every command below runs
 from the root of the cvc5 checkout.
