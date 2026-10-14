@@ -512,7 +512,8 @@
   \begin{itemize}
     \item \textbf{Valid lemmas}, consequences of the definitions and the premises: the closure
       rules, \rn{Acyclic-Down}, \rn{Register}, \rn{TC-Subset}, \rn{Fun-Pairs}, and the grounding
-      conflicts (thanks to the distinctness premise).
+      conflicts (their premises contain $S = \TC(R)$ or $S = A;B$ and the disequalities that
+      block every derivation).
     \item \textbf{Lemmas about skolems}, satisfiability-preserving: any model of the input
       extends to one in which the witness is a shortest cycle of the operands' closures,
       $f_R$ maps every element to its image, etc. This covers \rn{Cycle-Def}, \rn{Inst-Cycle},
@@ -1261,8 +1262,9 @@
       out, or free) under five option sets: no wrong answer, no error.
     \item \textbf{Bugs found on the way, fixed in this PR}:
       \begin{itemize}
-        \item the join grounding conflict refuted satisfiable branches under the hammer (missing
-          distinctness);
+        \item the join grounding conflict refuted satisfiable branches under the hammer: first
+          for lack of distinctness, then, for a membership on a set $S$ equal to the join only in
+          the current branch, for lack of the premise $S = A;B$;
         \item \sm{rel.rclosure} of a union crashed debug builds, and of a variable answered
           \sm{sat} wrongly (now \sm{unknown});
         \item the MiniSat default answered \sm{unsat} wrongly with \sm{:produce-interpolants} (a
