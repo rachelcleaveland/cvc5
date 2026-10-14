@@ -971,9 +971,10 @@
   \vspace{-1mm}
   \centering
   \begin{tabular}{@{}l@{\quad}l@{}}
-    where & $U = \{x\} \cup \{\, q_i \mid 1\le i\le n,\ \ M \models x = p_i \lor (x,p_i)\in\TC(R) \,\}$,
-            a set of terms, \\
-          & $M$ is the current model, and $p\notin U$ stands for $p\neq u$ for all $u\in U$
+    where & $U = \{x\} \cup \{\, q \mid (p,q)\in R,\ \ M \models p = x \lor (x,p)\in\TC(R) \,\}$: \\
+          & \quad $x$ and the target $q$ of every member $(p,q)$ of $R$ whose source $p$ is $x$ or
+            reachable from $x$, \\
+          & \quad in the current model $M$; \ $p\notin U$ stands for $p\neq u$ for all $u\in U$
   \end{tabular}
   \par\medskip
 
