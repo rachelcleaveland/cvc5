@@ -467,29 +467,33 @@ class TheorySetsRels : protected EnvObj
   /** PROTOTYPE: the decision strategies on the witness lengths */
   std::vector<std::unique_ptr<DecisionStrategy> > d_cycleLenStrategies;
   /**
-   * Grounding conflict for a membership (a, b) in TC(R), stated by
-   * exp = (set.member t S) with S ~ TC(R), that the known members
-   * (p1, q1), ..., (pn, qn) of R do not explain:
-   *   t in S /\ S = TC(R) /\ R = {(p1, q1), ..., (pn, qn)} /\ D => false
-   * where the disequalities D form a cut: let U be a and the targets qi of the
-   * members reached from a (modulo the current equalities); D says that no
-   * member leaves U (u != pj for u in U and every member j not reached) and
-   * that b is not a reached target (qi != b). E.g. for (a, c) in TC(R) with
-   * R = {(a, b), (d, c)}: a != d, b != d, b != c, not distinct(a, b, c, d).
-   * The equality S = TC(R) is omitted when S is TC(R). Introduces no fresh
-   * element.
+   * Grounding conflict for a membership (x, z) in TC(R), stated by
+   * exp = (set.member t S) with S ~ TC(R), that the known members do not
+   * explain:
+   *   (x, z) in S   S = TC(R)   R = {(p1, q1), ..., (pn, qn)}   x in U
+   *   pi notin U \/ (qi in U /\ qi != z)   for all i
+   *   ------------------------------------------------------------------
+   *   false
+   * for a set of terms U (p notin U: p != u for all u in U): every edge from U
+   * stays in U and misses z. U is x and the targets of the members reached
+   * from x; the lemma keeps, per member, the disjunct that holds. E.g. for
+   * (a, c) in TC(R) with R = {(a, b), (d, c)}: U = {a, b}, and the lemma has
+   * b != c, d != a, d != b. S = TC(R) is omitted when S is TC(R). Introduces no
+   * fresh element.
    */
   void applyTCGroundingConflict(Node mem_rep, Node tc_rel, Node exp);
   /**
    * Grounding conflict for a membership (x, z) in (rel.join A B), stated by
-   * exp = (set.member t S) with S ~ A;B, that the known members of A and B do
-   * not explain:
-   *   t in S /\ S = A;B /\ A = {known} /\ B = {known} /\ D => false
-   * where D has one disequality per way of deriving t: for a member of A whose
-   * prefix differs from x, one component disequality; likewise for a member of
-   * B whose suffix differs from z; for each remaining pair (m, n), the key
-   * disequality last(m) != first(n). E.g. for (a, c) in A;B with A = {(a, b)}
-   * and B = {(d, c)}: only b != d. The equality S = A;B is omitted when S is
+   * exp = (set.member t S) with S ~ A;B, that the known members do not
+   * explain:
+   *   (x, z) in S   S = A;B   A = {(x1, y1), ..}   B = {(u1, z1), ..}
+   *   xi != x \/ yi != uj \/ zj != z   for all i, j
+   *   ------------------------------------------------------------------
+   *   false
+   * no pair of members composes to (x, z). The lemma keeps, per pair, one
+   * disjunct that holds (a component disequality for a member whose prefix or
+   * suffix differs covers all its pairs). E.g. for (a, c) in A;B with
+   * A = {(a, b)} and B = {(d, c)}: only b != d. S = A;B is omitted when S is
    * the join. Introduces no fresh element.
    */
   void applyJoinGroundingConflict(Node mem_rep, Node join_rel, Node exp);
