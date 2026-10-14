@@ -964,12 +964,20 @@
   \small\mprset{sep=1.2em}
   \begin{mathpar}
     \inferrule*[right=\rn{Ground-TC}]
-      {(x,z)\in S \\ S = \TC(R) \\ R = \{(p_1,q_1),..,(p_n,q_n)\} \\ x\in U \\\\
+      {(x,z)\in S \\ S = \TC(R) \\ R = \{(p_1,q_1),..,(p_n,q_n)\} \\\\
        p_i\notin U \;\lor\; (q_i\in U \land q_i\neq z) \quad\text{for all } i}
       {\bot}
   \end{mathpar}
-  \centering every edge from the set of terms $U$ stays in $U$ and misses $z$
-  \quad ($p\notin U$: $p\neq u$ for all $u\in U$)
+  \vspace{-1mm}
+  \centering
+  \begin{tabular}{@{}l@{\quad}l@{}}
+    where & $U = \{x\} \cup \{\, q_i \mid p_i \text{ is } x \text{ or reachable from } x
+            \text{ in the current model} \,\}$, a set of terms, \\
+          & $p\notin U$ stands for $p\neq u$ for all $u\in U$
+  \end{tabular}
+  \par\medskip
+
+  every edge from $U$ stays in $U$ and misses $z$: $z$ is not reachable from $x$
   \medskip
 
   \begin{columns}[T]
@@ -989,14 +997,13 @@
   \end{column}
   \begin{column}{0.56\textwidth}
     \footnotesize
-    $(a,c)\in\TC(R)$, $R = \{(a,b),(d,c)\}$, $U = \{a, b\}$:
+    $(a,c)\in\TC(R)$, $R = \{(a,b),(d,c)\}$: $U = \{a, b\}$ ($b$ is reached by $(a,b)$):
     \begin{itemize}
       \item $(a,b)$: $a\in U$, so $b\in U \land \new{b\neq c}$;
       \item $(d,c)$: $d\notin U$, i.e.\ $\new{d\neq a} \land \new{d\neq b}$.
     \end{itemize}
-    Each is needed: $b = c$, $d = a$ or $d = b$ makes $(a,c)$ a member. $U$ is $x$ and the
-    targets of the members reached from $x$. Before: $\mathit{distinct}(a,b,c,d)$, 7 conflicts
-    instead of 1.
+    Each is needed: $b = c$, $d = a$ or $d = b$ makes $(a,c)$ a member. Before:
+    $\mathit{distinct}(a,b,c,d)$, 7 conflicts instead of 1.
   \end{column}
   \end{columns}
 \end{frame}
