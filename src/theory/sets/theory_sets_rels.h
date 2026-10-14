@@ -464,28 +464,38 @@ class TheorySetsRels : protected EnvObj
    */
   std::map<std::vector<Node>, Node> d_cycleAtoms;
   /**
-   * Grounding conflict for a membership (a, b) in TC(R), stated by exp, that
-   * the known members m1, ..., mn of R do not explain:
-   *   (a, b) in TC(R) /\ R = {m1, ..., mn} /\ distinct(a, b, elements of mi)
-   *     => false
-   * e.g. (a, c) in TC(R) /\ R = {(a, b)} /\ distinct(a, b, c) => false.
-   * The disequalities keep the lemma valid in branches where elements are
-   * merged later (with b = c above, the membership holds). The premise
-   * also contains the equalities of the elements to their representatives.
-   * Introduces no fresh element.
+   * Grounding conflict for a membership (a, b) in TC(R), stated by
+   * exp = (set.member t S) with S ~ TC(R), that the known members
+   * (p1, q1), ..., (pn, qn) of R do not explain:
+   *   t in S /\ S = TC(R) /\ R = {(p1, q1), ..., (pn, qn)} /\ D => false
+   * where the disequalities D form a cut: let U be a and the targets qi of the
+   * members reached from a (modulo the current equalities); D says that no
+   * member leaves U (u != pj for u in U and every member j not reached) and
+   * that b is not a reached target (qi != b). E.g. for (a, c) in TC(R) with
+   * R = {(a, b), (d, c)}: a != d, b != d, b != c, not distinct(a, b, c, d).
+   * The equality S = TC(R) is omitted when S is TC(R). Introduces no fresh
+   * element.
    */
   void applyTCGroundingConflict(Node mem_rep, Node tc_rel, Node exp);
   /**
    * Grounding conflict for a membership (x, z) in (rel.join A B), stated by
-   * exp, that the known members of A and B do not explain:
-   *   (x, z) in A;B /\ A = {known} /\ B = {known} /\ distinct(elements)
-   *     => false
-   * e.g. (a, c) in A;B /\ A = {(a, b)} /\ B = {(d, c)}
-   *      /\ distinct(a, b, c, d) => false
-   * (with b = d the membership holds).
-   * Introduces no fresh element.
+   * exp = (set.member t S) with S ~ A;B, that the known members of A and B do
+   * not explain:
+   *   t in S /\ S = A;B /\ A = {known} /\ B = {known} /\ D => false
+   * where D has one disequality per way of deriving t: for a member of A whose
+   * prefix differs from x, one component disequality; likewise for a member of
+   * B whose suffix differs from z; for each remaining pair (m, n), the key
+   * disequality last(m) != first(n). E.g. for (a, c) in A;B with A = {(a, b)}
+   * and B = {(d, c)}: only b != d. The equality S = A;B is omitted when S is
+   * the join. Introduces no fresh element.
    */
   void applyJoinGroundingConflict(Node mem_rep, Node join_rel, Node exp);
+  /**
+   * Adds the known members of rel (tuples of representatives) to members and
+   * returns the set of them, (set.union (set.singleton m1) ...), or the empty
+   * set.
+   */
+  Node mkKnownMembers(Node rel, std::vector<Node>& members);
   /**
    * Add the edge (fst_rep, snd_rep), justified by exp, to the TC graph of
    * tc_rel. Edges are only added, never removed. If the edge is already
