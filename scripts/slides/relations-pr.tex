@@ -971,9 +971,9 @@
   \vspace{-1mm}
   \centering
   \begin{tabular}{@{}l@{\quad}l@{}}
-    where & $U = \{x\} \cup \{\, q_i \mid p_i \text{ is } x \text{ or reachable from } x
-            \text{ in the current model} \,\}$, a set of terms, \\
-          & $p\notin U$ stands for $p\neq u$ for all $u\in U$
+    where & $U = \{x\} \cup \{\, q_i \mid 1\le i\le n,\ \ M \models x = p_i \lor (x,p_i)\in\TC(R) \,\}$,
+            a set of terms, \\
+          & $M$ is the current model, and $p\notin U$ stands for $p\neq u$ for all $u\in U$
   \end{tabular}
   \par\medskip
 

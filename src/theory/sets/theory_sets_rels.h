@@ -471,9 +471,10 @@ class TheorySetsRels : protected EnvObj
    *   pi notin U \/ (qi in U /\ qi != z)   for all i
    *   ------------------------------------------------------------------
    *   false
-   * for a set of terms U (p notin U: p != u for all u in U): every edge from U
-   * stays in U and misses z. U is x and the targets of the members reached
-   * from x; the lemma keeps, per member, the disjunct that holds. E.g. for
+   * where U = {x} U {qi | 1 <= i <= n, M |= x = pi \/ (x, pi) in TC(R)} for
+   * the current model M, a set of terms, and p notin U is p != u for all u in
+   * U: every edge from U stays in U and misses z. The lemma keeps, per member,
+   * the disjunct that holds. E.g. for
    * (a, c) in TC(R) with R = {(a, b), (d, c)}: U = {a, b}, and the lemma has
    * b != c, d != a, d != b. S = TC(R) is omitted when S is TC(R). Introduces no
    * fresh element.
