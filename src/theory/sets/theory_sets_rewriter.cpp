@@ -37,10 +37,6 @@ TheorySetsRewriter::TheorySetsRewriter(NodeManager* nm,
                                        bool relsEnabled)
     : TheoryRewriter(nm), d_cardEnabled(cardEnabled), d_relsEnabled(relsEnabled)
 {
-  // Needs to be a subcall in DSL reconstruction since set.is_empty is used
-  // as a premise to test emptiness of a set.
-  registerProofRewriteRule(ProofRewriteRule::SETS_INSERT_ELIM,
-                           TheoryRewriteCtx::PRE_DSL);
   registerProofRewriteRule(ProofRewriteRule::SETS_EVAL_OP,
                            TheoryRewriteCtx::POST_DSL);
 }
@@ -49,23 +45,6 @@ Node TheorySetsRewriter::rewriteViaRule(ProofRewriteRule id, const Node& n)
 {
   switch (id)
   {
-    case ProofRewriteRule::SETS_INSERT_ELIM:
-    {
-      if (n.getKind() == Kind::SET_INSERT)
-      {
-        NodeManager* nm = nodeManager();
-        size_t setNodeIndex = n.getNumChildren() - 1;
-        Node elems = n[setNodeIndex];
-        for (size_t i = 0; i < setNodeIndex; ++i)
-        {
-          size_t ii = (setNodeIndex - i) - 1;
-          Node singleton = nm->mkNode(Kind::SET_SINGLETON, n[ii]);
-          elems = nm->mkNode(Kind::SET_UNION, singleton, elems);
-        }
-        return elems;
-      }
-    }
-    break;
     case ProofRewriteRule::SETS_EVAL_OP:
     {
       if (n.getNumChildren() != 2 || !n[0].isConst() || !n[1].isConst())
@@ -412,7 +391,11 @@ RewriteResponse TheorySetsRewriter::postRewrite(TNode node)
         // we return true for (is_singleton (singleton x))
         return RewriteResponse(REWRITE_DONE, nodeManager()->mkConst(true));
       }
-      break;
+      // (set.is_singleton A) ---> (= A (set.singleton (set.choose A)))
+      Node choose = nm->mkNode(Kind::SET_CHOOSE, node[0]);
+      Node singleton = nm->mkNode(Kind::SET_SINGLETON, choose);
+      return RewriteResponse(REWRITE_AGAIN_FULL,
+                             nm->mkNode(Kind::EQUAL, node[0], singleton));
     }  // Kind::SET_IS_SINGLETON
 
     case Kind::SET_COMPREHENSION: return postRewriteComprehension(node); break;
@@ -422,7 +405,7 @@ RewriteResponse TheorySetsRewriter::postRewrite(TNode node)
     case Kind::SET_ALL: return postRewriteAll(node);
     case Kind::SET_SOME: return postRewriteSome(node);
     case Kind::SET_FOLD: return postRewriteFold(node);
-    case Kind::RELATION_ACYCLIC: return postRewriteAcyclic(node);
+    case Kind::RELATION_CYCLIC: return postRewriteCyclic(node);
     case Kind::RELATION_RCLOSURE: return postRewriteRClosure(node);
     case Kind::RELATION_RTCLOSURE: return postRewriteRTClosure(node);
     case Kind::RELATION_TABLE_JOIN:
@@ -838,7 +821,9 @@ RewriteResponse TheorySetsRewriter::preRewrite(TNode node)
   }
   else if (k == Kind::SET_INSERT)
   {
-    Node ret = rewriteViaRule(ProofRewriteRule::SETS_INSERT_ELIM, node);
+    // (set.insert x S) ---> (set.union (set.singleton x) S)
+    Node ret = nm->mkNode(
+        Kind::SET_UNION, nm->mkNode(Kind::SET_SINGLETON, node[0]), node[1]);
     return RewriteResponse(REWRITE_AGAIN, ret);
   }
   else if (k == Kind::SET_SUBSET)
@@ -911,47 +896,39 @@ RewriteResponse TheorySetsRewriter::postRewriteTableJoin(TNode n)
   return RewriteResponse(REWRITE_DONE, n);
 }
 
-RewriteResponse TheorySetsRewriter::postRewriteAcyclic(TNode n)
+RewriteResponse TheorySetsRewriter::postRewriteCyclic(TNode n)
 {
-  Assert(n.getKind() == Kind::RELATION_ACYCLIC);
+  Assert(n.getKind() == Kind::RELATION_CYCLIC);
   NodeManager* nm = nodeManager();
-  // acyclic((R1,...,Rk)) is acyclic(R1 union ... union Rk). If every component
-  // relation is constant, decide it directly: the union's edge set is acyclic
-  // iff its transitive closure contains no self-loop (a,a). Otherwise leave the
-  // term for the solver.
-  std::vector<Node> rels = TupleUtils::getTupleElements(n[0]);
-  std::set<Node> rel_mems;
-  for (const Node& r : rels)
+  Node r = n[0];
+  // the empty relation has no cycle
+  if (r.getKind() == Kind::SET_EMPTY)
   {
-    if (!r.isConst())
-    {
-      return RewriteResponse(REWRITE_DONE, n);
-    }
-    if (r.getKind() != Kind::SET_EMPTY)
-    {
-      std::set<Node> m = NormalForm::getElementsFromNormalConstant(r);
-      rel_mems.insert(m.begin(), m.end());
-    }
+    return RewriteResponse(REWRITE_DONE, nm->mkConst(false));
   }
-  if (rel_mems.empty())
+  // a single pair (x, y) is a cycle iff it is a self-loop
+  if (r.getKind() == Kind::SET_SINGLETON)
   {
-    // the empty union is acyclic
-    return RewriteResponse(REWRITE_DONE, nm->mkConst(true));
+    Node x = TupleUtils::nthElementOfTuple(r[0], 0);
+    Node y = TupleUtils::nthElementOfTuple(r[0], 1);
+    return RewriteResponse(REWRITE_AGAIN_FULL, x.eqNode(y));
   }
-  // rels[0] is only a type carrier for constructing the closure pairs
-  std::set<Node> tc_rel_mems = RelsUtils::computeTC(rel_mems, rels[0]);
-  bool acyclic = true;
-  for (const Node& tuple : tc_rel_mems)
+  // a constant relation is cyclic iff its transitive closure has a self-loop
+  if (r.isConst())
   {
-    Node x = TupleUtils::nthElementOfTuple(tuple, 0);
-    Node y = TupleUtils::nthElementOfTuple(tuple, 1);
-    if (x == y)
+    std::set<Node> mems = NormalForm::getElementsFromNormalConstant(r);
+    std::set<Node> tc = RelsUtils::computeTC(mems, r);
+    for (const Node& tuple : tc)
     {
-      acyclic = false;
-      break;
+      if (TupleUtils::nthElementOfTuple(tuple, 0)
+          == TupleUtils::nthElementOfTuple(tuple, 1))
+      {
+        return RewriteResponse(REWRITE_DONE, nm->mkConst(true));
+      }
     }
+    return RewriteResponse(REWRITE_DONE, nm->mkConst(false));
   }
-  return RewriteResponse(REWRITE_AGAIN_FULL, nm->mkConst(acyclic));
+  return RewriteResponse(REWRITE_DONE, n);
 }
 
 RewriteResponse TheorySetsRewriter::postRewriteRClosure(TNode n)
@@ -963,16 +940,14 @@ RewriteResponse TheorySetsRewriter::postRewriteRClosure(TNode n)
   {
     case Kind::SET_EMPTY:
     {
-      // (rel.rclosure (as set.empty (Relation T T))) = (as set.empty (Relation
-      // T T))
+      // (rel.rclosure empty) = empty
       Node ret = n[0];
       return RewriteResponse(REWRITE_DONE, ret);
     }
     case Kind::SET_SINGLETON:
     {
-      // (rel.rclosure (set.singleton (tuple x y))) =
-      //   (set.insert (tuple y y) (set.insert (tuple x x) (set.singleton (tuple
-      //   x y))))
+      // (rel.rclosure {(x, y)}) = {(y, y)} U ({(x, x)} U {(x, y)}),
+      // e.g. (rel.rclosure {(1, 2)}) = {(1, 1), (1, 2), (2, 2)}
       Node tuple = n[0][0];
       Node x = TupleUtils::nthElementOfTuple(tuple, 0);
       Node y = TupleUtils::nthElementOfTuple(tuple, 1);
@@ -991,10 +966,10 @@ RewriteResponse TheorySetsRewriter::postRewriteRClosure(TNode n)
     }
     case Kind::SET_UNION:
     {
-      // (rel.rclosure (set.union A B)) = (set.union (rel.rclosure A)
-      // (rel.rclosure B))
-      Node A = n[0];
-      Node B = n[1];
+      // (rel.rclosure (A U B)) = (rel.rclosure A) U (rel.rclosure B), since
+      // the elements related by A U B are those related by A or by B
+      Node A = n[0][0];
+      Node B = n[0][1];
 
       Node rcloseA = nm->mkNode(Kind::RELATION_RCLOSURE, A);
       Node rcloseB = nm->mkNode(Kind::RELATION_RCLOSURE, B);

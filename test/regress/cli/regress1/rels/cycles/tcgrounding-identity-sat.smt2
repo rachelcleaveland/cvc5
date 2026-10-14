@@ -1,6 +1,6 @@
 ; REQUIRES: no-safe-mode
 ; REQUIRES: no-stable-mode
-; COMMAND-LINE: --rels-acyclic-hammer --rels-acyclic-unroll-max=3
+; COMMAND-LINE: --rels-acyclic-hammer
 ;
 ; Regression test for a soundness bug in TheorySetsRels::applyTCGroundingConflict
 ; (used by checkTransitiveClosureLastCall under --rels-acyclic-hammer): its
@@ -17,19 +17,15 @@
 ; `false` in that branch. This file has a genuine satisfying model requiring
 ; not_sc_mcm's cycle-witness elements to be identified with concrete graph
 ; nodes; under the old buggy implementation this could resolve to an
-; unconfirmed "unsat" instead of "sat" (with --rels-acyclic-unroll-max=3
-; specifically) or simply time out (with any cap, or none at all -- this
-; bug's spurious permanently-learned conflicts made the search substantially
-; harder even when they didn't cause an outright wrong answer). Fixed by
+; unconfirmed "unsat" instead of "sat" or simply time out (this bug's spurious
+; permanently-learned conflicts made the search substantially harder even
+; when they didn't cause an outright wrong answer). Fixed by
 ; adding mem_rep[0]'s disequality from every known source of tc_rel[0] as an
 ; explicit antecedent conjunct, unconditionally -- regardless of whether that
 ; disequality is currently provable. This keeps the clause a tautology in
 ; all cases: if the disequality later turns out false (the skolem gets
 ; identified with a source), that antecedent conjunct is false and the
 ; clause is simply inactive rather than unsound.
-; This also serves as the "genuine catch-up" companion to
-; unroll-max-sufficient-cap-sat.smt2: the cap here (3) is strictly less than
-; not_sc_mcm's required cycle length (4).
 (set-logic ALL)
 (set-info :status sat)
 
@@ -106,7 +102,7 @@
 
 (define-fun not_sc_mcm () Bool
   ;; === CHANGED FOR FULL: SC = acyclic(rf U po U co U fr)  (was rf U po) ===
-  (not (rel.acyclic (tuple rf po co fr)))
+  (rel.cyclic (set.union rf (set.union po (set.union co fr))))
 )
 
 
@@ -185,7 +181,7 @@
 ;; === END ADDED ===
 
 ;; Litmus test templates (same-address "po-loc" form, restored from the source):
-(assert (rel.acyclic (tuple po)))
+(assert (not (rel.cyclic po)))
 ;; === CHANGED FOR FULL: each template is  irreflexive( (po+ ∩ same-address) ; X )
 ;;     for X in {rf, co, fr}.  (acyclic9 used the simpler  irreflexive(po+ ; rf).) ===
 (assert (irreflexive (rel.join

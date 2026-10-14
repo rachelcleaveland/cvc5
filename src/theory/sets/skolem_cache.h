@@ -55,11 +55,14 @@ class SkolemCache
     // (a,b) in join(A,B) => exists k. (a,k) in A ^ (k,b) in B
     // This is cached by the nodes corresponding to (a,b) and join(A,B).
     SK_JOIN,
-    // not acyclic(R1,...,Rm) => exists k1,...,kn. forall i in [1,n).
-    //                           (ki, k(i+1)) in R1 V ... V (ki, k(i+1)) in Rm
+    // (rel.cyclic R) => exists l, s1, ..., sl. s1 = sl and
+    //   forall i in [1, l). (si, s(i+1)) in TC(R)
+    // The element si is cached by R and i, e.g. for (rel.cyclic po) the
+    // self-loop (s1, s1) in TC(po). For a union R = R1 U ... U Rk, each edge
+    // is in one of TC(R1), ..., TC(Rk). Also the fresh pair t of the
+    // inclusion anchor rule, cached by R and the acyclic relation.
     SK_CYCLE_ELEM,
-    // not acyclic(R1,...,Rm) => exists k. exists s1,...,sk. forall i in [1,k).
-    //                           (si, s(i+1)) in R1 V ... V (si, s(i+1)) in Rm
+    // the length l above, cached by R
     SK_CYCLE_LEN,
     // (rel.is-functional R) => exists f. forall x y. (x, y) in R => y = f(x)
     // This is cached by the node R.

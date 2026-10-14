@@ -411,7 +411,7 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     SET_AND_NOTIFY_VAL_SYM(
         prop, satSolver, options::SatSolverMode::MINISAT, "incremental");
   }
-  if (opts.sets.setsExp && !opts.prop.satSolverWasSetByUser)
+  if (opts.sets.setsExp && !opts.prop.satSolverWasSetByUser && !isSygus(opts))
   {
     // The extended sets symbols (set.universe, set.complement) are in
     // practice used by relational problems, e.g. memory-model encodings, whose
@@ -419,6 +419,8 @@ void SetDefaults::finalizeLogic(LogicInfo& logic, Options& opts) const
     // and by the relational solver's lemmas. On such problems this heuristic
     // is effective only with MiniSat: models that MiniSat finds in seconds are
     // not found by CaDiCaL within minutes, with either decision heuristic.
+    // Not for problems recast as sygus (abducts, interpolants): there MiniSat
+    // answers unsat wrongly on regress0/sets/proj-issue664-card-universe-bag.
     SET_AND_NOTIFY_VAL_SYM(
         prop, satSolver, options::SatSolverMode::MINISAT, "sets-exp");
   }
@@ -987,6 +989,13 @@ void SetDefaults::setDefaultsPost(const LogicInfo& logic, Options& opts) const
         throw FatalOptionException(ss.str());
       }
       SET_AND_NOTIFY(smt, checkModels, false, sOptNoModel);
+    }
+    if (opts.smt.modelVerify)
+    {
+      // Note we do not throw an exception if this was set by the user, since
+      // this option is a best effort attempt at strengthening unknown
+      // responses, which we simply disable here.
+      SET_AND_NOTIFY(smt, modelVerify, false, sOptNoModel);
     }
   }
 
@@ -1933,6 +1942,7 @@ void SetDefaults::disableChecking(Options& opts)
   opts.write_smt().checkProofs = false;
   opts.write_smt().debugCheckModels = false;
   opts.write_smt().checkModels = false;
+  opts.write_smt().modelVerify = false;
   opts.write_proof().checkProofSteps = false;
   opts.write_proof().proofLog = false;
 }

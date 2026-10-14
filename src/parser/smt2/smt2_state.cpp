@@ -475,20 +475,6 @@ bool Smt2State::hasCardinalityConstraints() const
 
 bool Smt2State::logicIsSet() { return d_logicSet; }
 
-bool Smt2State::getTesterName(Term cons, std::string& name)
-{
-  if (strictModeEnabled())
-  {
-    // 2.6 or above uses indexed tester symbols, if we are in strict mode,
-    // we do not automatically define is-cons for constructor cons.
-    return false;
-  }
-  std::stringstream ss;
-  ss << "is-" << cons;
-  name = ss.str();
-  return true;
-}
-
 Term Smt2State::mkIndexedConstant(const std::string& name,
                                   const std::vector<uint32_t>& numerals)
 {
@@ -918,7 +904,7 @@ void Smt2State::setLogic(std::string name)
     addOperator(Kind::RELATION_TCLOSURE, "rel.tclosure");
     addOperator(Kind::RELATION_RCLOSURE, "rel.rclosure");
     addOperator(Kind::RELATION_RTCLOSURE, "rel.rtclosure");
-    addOperator(Kind::RELATION_ACYCLIC, "rel.acyclic");
+    addOperator(Kind::RELATION_CYCLIC, "rel.cyclic");
     addOperator(Kind::RELATION_JOIN_IMAGE, "rel.join_image");
     addOperator(Kind::RELATION_IDEN, "rel.iden");
     addOperator(Kind::RELATION_IS_FUNCTIONAL, "rel.is-functional");
