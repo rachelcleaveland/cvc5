@@ -84,7 +84,9 @@ void TheorySets::finishInit()
   d_equalityEngine->addFunctionKind(Kind::RELATION_TRANSPOSE);
   d_equalityEngine->addFunctionKind(Kind::RELATION_TCLOSURE);
   d_equalityEngine->addFunctionKind(Kind::RELATION_CYCLIC);
-  d_equalityEngine->addFunctionKind(Kind::RELATION_CYCLIC_PATTERN);
+  // RELATION_CYCLIC_PATTERN binds variables: as a function kind, adding the
+  // atom to the equality engine would add its body, and with it the bound
+  // variables, as terms. It is a leaf for congruence purposes instead.
   d_equalityEngine->addFunctionKind(Kind::RELATION_JOIN_IMAGE);
   d_equalityEngine->addFunctionKind(Kind::RELATION_IDEN);
   d_equalityEngine->addFunctionKind(Kind::RELATION_IS_FUNCTIONAL);
