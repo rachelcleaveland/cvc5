@@ -215,7 +215,7 @@ class TheorySetsRels : protected EnvObj
   std::set<std::pair<std::pair<Node, Node>, size_t>> d_anchorBranchSent;
 
   /** Mapping from the representative of R to the (false, i.e. asserted
-   * (not (rel.cyclic-pattern (t1 ... tl) R P))) cyclic-pattern literals whose
+   * (not (rel.cyclic-pattern p R))) cyclic-pattern literals whose
    * relation R has that representative. Consumed by checkAcyclicPatternDown.
    */
   std::map<Node, std::vector<Node>> d_acyclic_pattern_cache;
@@ -343,18 +343,13 @@ class TheorySetsRels : protected EnvObj
   Node cyclicAtom(const std::vector<Node>& rels) const;
   /**
    * InstCycle-Patt: for a true cyclic-pattern atom
-   * (rel.cyclic-pattern boundVars R body), introduces l fresh skolems
-   * w1,...,wl (l = boundVars' length) and asserts the l wraparound edge
-   * memberships in R, and body with w1,...,wl substituted for boundVars. R
-   * may itself be a union of other relations; no decomposition of it is
-   * needed here, unlike applyInstCycleRule, since this rule only ever checks
-   * membership in R as a whole. Fresh skolems are required here because
-   * boundVars' elements are bound variables (that is what exempts this
-   * closure's Boolean body from RemoveTermFormulas's purification -- see the
-   * comment on addClosureKind's use for this kind in smt2_state.cpp) and so
-   * cannot be used as free-standing terms outside this term. Unlike
+   * (rel.cyclic-pattern p R), introduces l fresh skolems w1,...,wl (l = the
+   * arity of p) and asserts the l wraparound edge memberships in R, and
+   * (p w1 ... wl). R may itself be a union of other relations; no
+   * decomposition of it is needed here, unlike applyInstCycleRule, since this
+   * rule only ever checks membership in R as a whole. Unlike
    * applyInstCycleRule, this fires unconditionally in one shot: the pattern
-   * length is fixed by boundVars' length, so there is no
+   * length is fixed by the arity of p, so there is no
    * case-split/incremental-unrolling machinery needed here.
    *
    * EXPERIMENT: this used to also assert w1,...,wl's pairwise distinctness
@@ -364,13 +359,12 @@ class TheorySetsRels : protected EnvObj
   void applyInstCyclePatternRule(Node atom);
   /**
    * AcyclicDown-Patt: for every known-false cyclic-pattern atom
-   * (not (rel.cyclic-pattern boundVars R body)), searches the current known
-   * members of R for closed walks of length exactly l = boundVars' length,
+   * (not (rel.cyclic-pattern p R)), searches the current known members of R
+   * for closed walks of length exactly l = the arity of p,
    * with pairwise currently-distinct representatives (a search-pruning
    * heuristic only, not a soundness requirement -- see
    * fireAcyclicPatternDown). For each such walk w1,...,wl found, fires
-   * sendInfer(NOT body[w1/t1,...,wl/tl], ...) unconditionally, where
-   * t1,...,tl are boundVars' elements.
+   * sendInfer(NOT (p w1 ... wl), ...) unconditionally.
    *
    * EXPERIMENT: fireAcyclicPatternDown used to also require w1,...,wl to be
    * provably distinct as an antecedent before firing (see the
@@ -385,7 +379,7 @@ class TheorySetsRels : protected EnvObj
    * visited so far, respectively) by one more edge out of adj, or, once
    * l - 1 edges have been placed, looks for the closing edge back to
    * startRep and fires on each one found. atom is the cached literal
-   * (not (rel.cyclic-pattern boundVars R body)), passed through unexamined
+   * (not (rel.cyclic-pattern p R)), passed through unexamined
    * to fireAcyclicPatternDown.
    */
   void searchAcyclicPatternWalks(const std::map<Node, std::vector<size_t>>& adj,
@@ -399,14 +393,13 @@ class TheorySetsRels : protected EnvObj
   /**
    * Builds and sends the AcyclicDown-Patt conflict for one closed walk
    * (pathIdx, indices into members/exps) found by searchAcyclicPatternWalks.
-   * atom is the literal (not (rel.cyclic-pattern boundVars R body)) that
-   * justifies the conclusion; atom[0] is the inner positive
-   * RELATION_CYCLIC_PATTERN term, whose boundVars (atom[0][0]) and body
-   * (atom[0][2]) the conclusion substitutes w1,...,wl into. w_i is taken as
-   * the literal source of edge i; wherever a representative is substituted
-   * for a literal term (linking one edge's destination to the next edge's
-   * source), an explicit equality is added as its own antecedent conjunct,
-   * unconditionally -- the same soundness idiom used by
+   * atom is the literal (not (rel.cyclic-pattern p R)) that justifies the
+   * conclusion; atom[0] is the inner positive RELATION_CYCLIC_PATTERN term,
+   * whose predicate p (atom[0][0]) the conclusion applies to w1,...,wl. w_i
+   * is taken as the literal source of edge i; wherever a representative is
+   * substituted for a literal term (linking one edge's destination to the
+   * next edge's source), an explicit equality is added as its own antecedent
+   * conjunct, unconditionally -- the same soundness idiom used by
    * applyTCGroundingConflict, and for the same reason: the resulting clause
    * must remain a tautology even if the search later backtracks past
    * whatever merges made those representative choices.
@@ -420,15 +413,20 @@ class TheorySetsRels : protected EnvObj
                               const std::vector<size_t>& pathIdx,
                               Node atom);
   /**
-   * Substitutes args for boundVars' variables in body. Since
-   * rel.cyclic-pattern's body is a plain Boolean term over its own bound
-   * variable list (not a separate function-typed value, and exempted from
-   * RemoveTermFormulas's Boolean-term purification by being a closure),
-   * this is a direct substitution -- no lambda purification or APPLY_UF is
-   * ever involved, unlike an encoding where the pattern is passed as a
-   * first-class predicate term.
+   * @param p the predicate of a rel.cyclic-pattern atom, of type
+   * (-> T ... T Bool)
+   * @param args the terms to apply p to, one per argument of p
+   * @return the application of p to args, beta-reduced if p is defined by a
+   * lambda.
+   *
+   * At preprocessing, a lambda argument of rel.cyclic-pattern is replaced by
+   * its purification skolem. The conclusions of the pattern rules are
+   * asserted as internal facts and lemmas built at check time, so we perform
+   * the beta reduction that HoExtension::ppRewrite would otherwise have
+   * performed, see FunctionConst::getDefinition and
+   * TheorySetsPrivate::mkApplyFunction.
    */
-  Node instantiateBody(Node boundVars, Node body, const std::vector<Node>& args);
+  Node applyPattern(Node p, const std::vector<Node>& args);
   /** Build the (rewritten) union of the given relations. */
   Node mkRelUnion(const std::vector<Node>& rels);
   /**

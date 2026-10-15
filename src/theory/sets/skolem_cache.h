@@ -70,10 +70,10 @@ class SkolemCache
     SK_NOT_FUNCTIONAL1,
     SK_NOT_FUNCTIONAL2,
     SK_NOT_FUNCTIONAL3,
-    // (rel.cyclic-pattern (t1...tl) R p) =>
+    // (rel.cyclic-pattern p R) =>
     //    exists w1,...,wl.
     //    (w1, w2) in R ^ ... ^ (w{l-1}, wl) in R ^ (wl, w1) in R
-    //    ^ p[w1/t1,...,wl/tl]
+    //    ^ (p w1 ... wl)
     SK_CYCLE_PATTERN_ELEM,
   };
 

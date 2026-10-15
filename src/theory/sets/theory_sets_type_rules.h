@@ -356,10 +356,9 @@ struct RelCyclicTypeRule
 };
 
 /**
- * Type rule for (rel.cyclic-pattern ((t1 T) ... (tl T)) R P), a closure
- * whose bound variable list (t1 ... tl, l >= 1) must all share a common
- * type T, where R is a binary relation of type (Relation T T), and P is a
- * Boolean term over t1 ... tl. The return type is boolean.
+ * Type rule for (rel.cyclic-pattern p R), where p is a predicate of type
+ * (-> T ... T Bool) with at least one argument and R is a binary relation of
+ * type (Relation T T). The return type is boolean.
  */
 struct RelCyclicPatternTypeRule
 {
