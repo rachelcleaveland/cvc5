@@ -381,6 +381,7 @@ const char* toString(InferenceId i)
 
     case InferenceId::SETS_SKOLEM: return "SETS_SKOLEM";
     case InferenceId::SETS_CG_SPLIT: return "SETS_CG_SPLIT";
+    case InferenceId::SETS_CHOOSE_MEMBER: return "SETS_CHOOSE_MEMBER";
     case InferenceId::SETS_COMPREHENSION: return "SETS_COMPREHENSION";
     case InferenceId::SETS_DEQ: return "SETS_DEQ";
     case InferenceId::SETS_DOWN_CLOSURE: return "SETS_DOWN_CLOSURE";
@@ -452,8 +453,6 @@ const char* toString(InferenceId i)
     case InferenceId::SETS_RELS_UNROLL_CYCLE: return "SETS_RELS_UNROLL_CYCLE";
     case InferenceId::SETS_RELS_TCLOSURE_SUBSET:
       return "SETS_RELS_TCLOSURE_SUBSET";
-    case InferenceId::SETS_RELS_ACYCLIC_FLATTEN:
-      return "SETS_RELS_ACYCLIC_FLATTEN";
     case InferenceId::SETS_RELS_ACYCLIC_SELF_LOOP:
       return "SETS_RELS_ACYCLIC_SELF_LOOP";
     case InferenceId::SETS_RELS_TRANSPOSE_EQ: return "SETS_RELS_TRANSPOSE_EQ";

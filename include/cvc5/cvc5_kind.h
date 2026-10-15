@@ -3467,9 +3467,9 @@ enum ENUM(Kind)
    */
   EVALUE(SET_SINGLETON),
   /**
-   * The set obtained by inserting elements;
+   * The set obtained by inserting elements, right associative.
    *
-   * - Arity: ``n > 0``
+   * - Arity: ``n > 1``
    *
    *   - ``1..n-1:`` Terms of any Sort (must match the element sort of the given set Term)
    *   - ``n:`` Term of set Sort
@@ -3482,6 +3482,15 @@ enum ENUM(Kind)
    * - Create Op of this kind with:
    *
    *   - TermManager::mkOp(Kind, const std::vector<uint32_t>&)
+   *
+   * \rst
+   * .. note::
+   *
+   *     Similar to :cpp:enumerator:`IMPLIES`, terms of this kind with more
+   *     than two arguments are constructed as nested binary applications,
+   *     e.g. ``(set.insert a b S)`` is constructed as
+   *     ``(set.insert a (set.insert b S))``.
+   * \endrst
    */
   EVALUE(SET_INSERT),
   /**
@@ -3909,6 +3918,15 @@ enum ENUM(Kind)
   /**
    * Relation reflexive closure.
    *
+   * \rst
+   * ``(rel.rclosure R)`` is :math:`R` together with the pairs
+   * :math:`(x, x)` for every :math:`x` in the domain or range of the binary
+   * relation :math:`R`, e.g., :math:`\{(1, 2)\}` gives
+   * :math:`\{(1, 1), (1, 2), (2, 2)\}`. The solver only supports it if its
+   * argument is built from the empty set, singletons and unions, which
+   * rewriting eliminates; otherwise it may answer unknown.
+   * \endrst
+   *
    * - Arity: ``1``
    *
    *   - ``1:`` Term of relation Sort
@@ -3926,6 +3944,12 @@ enum ENUM(Kind)
   /**
    * Relation reflexive transitive closure.
    *
+   * \rst
+   * ``(rel.rtclosure R)`` is the union of ``(rel.rclosure R)`` and
+   * ``(rel.tclosure R)``, e.g., :math:`\{(1, 2), (2, 3)\}` gives
+   * :math:`\{(1, 1), (1, 2), (1, 3), (2, 2), (2, 3), (3, 3)\}`.
+   * \endrst
+   *
    * - Arity: ``1``
    *
    *   - ``1:`` Term of relation Sort
@@ -3941,11 +3965,20 @@ enum ENUM(Kind)
    */
   EVALUE(RELATION_RTCLOSURE),
   /**
-   * Relation acyclic predicate.
+   * Relation cyclicity predicate.
+   *
+   * \rst
+   * ``(rel.cyclic R)`` holds iff :math:`(x, x) \in R^+` for some :math:`x`,
+   * where :math:`R^+` is the transitive closure of the binary relation
+   * :math:`R`, i.e., iff :math:`R` has a cycle. Acyclicity of :math:`R` is
+   * ``(not (rel.cyclic R))``. For example, ``(rel.cyclic (set.union R S))``
+   * holds for :math:`R = \{(a, b)\}` and :math:`S = \{(b, a)\}`, while
+   * ``(rel.cyclic R)`` and ``(rel.cyclic S)`` do not.
+   * \endrst
    *
    * - Arity: ``1``
    *
-   *   - ``1:`` Term of tuple Sort whose elements are binary relation Sorts
+   *   - ``1:`` Term of binary relation Sort whose two columns have the same Sort
    *
    * - Create Term of this Kind with:
    *
@@ -3956,7 +3989,7 @@ enum ENUM(Kind)
    *
    *   - TermManager::mkOp(Kind, const std::vector<uint32_t>&)
    */
-  EVALUE(RELATION_ACYCLIC),
+  EVALUE(RELATION_CYCLIC),
   /**
    * Relation join image.
    *

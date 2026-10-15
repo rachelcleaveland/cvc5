@@ -105,13 +105,26 @@ IllegalChecker::IllegalChecker(Env& e)
       d_illegalKinds.insert(Kind::RELATION_TCLOSURE);
       d_illegalKinds.insert(Kind::RELATION_RCLOSURE);
       d_illegalKinds.insert(Kind::RELATION_RTCLOSURE);
-      d_illegalKinds.insert(Kind::RELATION_ACYCLIC);
+      d_illegalKinds.insert(Kind::RELATION_CYCLIC);
       d_illegalKinds.insert(Kind::RELATION_IDEN);
       d_illegalKinds.insert(Kind::RELATION_IS_FUNCTIONAL);
       d_illegalKinds.insert(Kind::RELATION_JOIN_IMAGE);
       d_illegalKinds.insert(Kind::RELATION_GROUP);
       d_illegalKinds.insert(Kind::RELATION_AGGREGATE);
       d_illegalKinds.insert(Kind::RELATION_PROJECT);
+    }
+    // Operators taking function arguments require higher-order logic, which
+    // is not available unless ufHoExp is enabled. We guard against them here
+    // since the check in the theory solver is not applied if they are
+    // eliminated by rewriting beforehand, e.g. (set.map f S) where f is a
+    // defined function is rewritten using lambda elimination.
+    if (!options().uf.ufHoExp)
+    {
+      d_illegalKinds.insert(Kind::SET_MAP);
+      d_illegalKinds.insert(Kind::SET_FILTER);
+      d_illegalKinds.insert(Kind::SET_ALL);
+      d_illegalKinds.insert(Kind::SET_SOME);
+      d_illegalKinds.insert(Kind::SET_FOLD);
     }
   }
   // unsupported theories disables all kinds belonging to the theory

@@ -176,8 +176,8 @@ struct IsSetTypeRule
 };
 
 /**
- * Type rule for (set.insert e1 ... en A) that checks the sorts of e1, ..., en
- * match the element sort of the set A
+ * Type rule for (set.insert e A) that checks the sort of e matches the element
+ * sort of the set A
  */
 struct InsertTypeRule
 {
@@ -341,11 +341,11 @@ struct RelReflTransClosureTypeRule
 };
 
 /**
- * Type rule for unary operator (rel.acyclic A) to check that A is a binary
- * relation of type (Relation T T), where T is a type. The return type will
- * be boolean.
+ * Type rule for the predicate (rel.cyclic R) to check that R is a binary
+ * relation of type (Relation T T), where T is a type. The return type is
+ * Boolean.
  */
-struct RelAcyclicTypeRule
+struct RelCyclicTypeRule
 {
   static TypeNode preComputeType(NodeManager* nm, TNode n);
 
