@@ -360,11 +360,10 @@ class TheorySetsRels : protected EnvObj
   /**
    * AcyclicDown-Patt: for every known-false cyclic-pattern atom
    * (not (rel.cyclic-pattern p R)), searches the current known members of R
-   * for closed walks of length exactly l = the arity of p,
-   * with pairwise currently-distinct representatives (a search-pruning
-   * heuristic only, not a soundness requirement -- see
-   * fireAcyclicPatternDown). For each such walk w1,...,wl found, fires
-   * sendInfer(NOT (p w1 ... wl), ...) unconditionally.
+   * for closed walks of length exactly l = the arity of p. The elements of a
+   * walk may repeat (see searchAcyclicPatternWalks). For each such walk
+   * w1,...,wl found, fires sendInfer(NOT (p w1 ... wl), ...)
+   * unconditionally.
    *
    * EXPERIMENT: fireAcyclicPatternDown used to also require w1,...,wl to be
    * provably distinct as an antecedent before firing (see the
@@ -374,21 +373,21 @@ class TheorySetsRels : protected EnvObj
    */
   void checkAcyclicPatternDown();
   /**
-   * Recursive helper for checkAcyclicPatternDown: extends the walk in
-   * pathIdx/pathReps (edge indices into members / node representatives
-   * visited so far, respectively) by one more edge out of adj, or, once
-   * l - 1 edges have been placed, looks for the closing edge back to
-   * startRep and fires on each one found. atom is the cached literal
-   * (not (rel.cyclic-pattern p R)), passed through unexamined
-   * to fireAcyclicPatternDown.
+   * Recursive helper for checkAcyclicPatternDown: extends the walk pathIdx
+   * (edge indices into members), which currently ends at the node with
+   * representative curRep, by one more edge out of adj, or, once l - 1 edges
+   * have been placed, looks for the closing edge back to startRep and fires
+   * on each one found. Nodes may be revisited. atom is the cached literal
+   * (not (rel.cyclic-pattern p R)), passed through unexamined to
+   * fireAcyclicPatternDown.
    */
   void searchAcyclicPatternWalks(const std::map<Node, std::vector<size_t>>& adj,
                                  const std::vector<Node>& members,
                                  const std::vector<Node>& exps,
                                  Node startRep,
+                                 Node curRep,
                                  size_t l,
                                  std::vector<size_t>& pathIdx,
-                                 std::vector<Node>& pathReps,
                                  Node atom);
   /**
    * Builds and sends the AcyclicDown-Patt conflict for one closed walk

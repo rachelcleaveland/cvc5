@@ -2569,14 +2569,13 @@ void TheorySetsRels::checkAcyclicPatternDown()
       for (const auto& startEntry : adj)
       {
         std::vector<size_t> pathIdx;
-        std::vector<Node> pathReps{startEntry.first};
         searchAcyclicPatternWalks(adj,
                                   members,
                                   exps,
                                   startEntry.first,
+                                  startEntry.first,
                                   l,
                                   pathIdx,
-                                  pathReps,
                                   atom);
       }
     }
@@ -2588,12 +2587,11 @@ void TheorySetsRels::searchAcyclicPatternWalks(
     const std::vector<Node>& members,
     const std::vector<Node>& exps,
     Node startRep,
+    Node curRep,
     size_t l,
     std::vector<size_t>& pathIdx,
-    std::vector<Node>& pathReps,
     Node atom)
 {
-  Node curRep = pathReps.back();
   std::map<Node, std::vector<size_t>>::const_iterator it = adj.find(curRep);
   if (it == adj.end())
   {
@@ -2617,23 +2615,19 @@ void TheorySetsRels::searchAcyclicPatternWalks(
     }
     return;
   }
+  // The walk may revisit a node: a closed walk of length l is any sequence
+  // of l edges that returns to its start, and the positive rule
+  // (applyInstCyclePatternRule) admits repeated elements too. For example,
+  // a self-loop (a, a) gives the walk a -> a -> a of length 2. Pruning the
+  // revisited nodes here would miss these walks and accept models that
+  // falsify the negated pattern. The depth is bounded by l.
   for (size_t idx : it->second)
   {
     Node destRep =
         getRepresentative(TupleUtils::nthElementOfTuple(members[idx], 1));
-    // Search-pruning only (not a soundness requirement, see
-    // fireAcyclicPatternDown): do not extend the walk through a node whose
-    // representative is already visited.
-    if (std::find(pathReps.begin(), pathReps.end(), destRep)
-        != pathReps.end())
-    {
-      continue;
-    }
     pathIdx.push_back(idx);
-    pathReps.push_back(destRep);
     searchAcyclicPatternWalks(
-        adj, members, exps, startRep, l, pathIdx, pathReps, atom);
-    pathReps.pop_back();
+        adj, members, exps, startRep, destRep, l, pathIdx, atom);
     pathIdx.pop_back();
   }
 }

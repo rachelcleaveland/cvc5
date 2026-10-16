@@ -3554,6 +3554,8 @@ set(regress_1_tests
   regress1/rels/cycles/acyclic-pattern-inst-cycle-sat-2.smt2
   regress1/rels/cycles/acyclic-pattern-down-unsat.smt2
   regress1/rels/cycles/acyclic-pattern-down-sat.smt2
+  regress1/rels/cycles/acyclic-pattern-down-revisit-unsat.smt2
+  regress1/rels/cycles/acyclic-pattern-down-revisit-3-unsat.smt2
   regress1/rels/cycles/acyclic-pattern-uf-down-unsat.smt2
   regress1/rels/cycles/acyclic-pattern-uf-inst-cycle-unsat.smt2
   regress1/rels/addr_book_1.cvc.smt2
