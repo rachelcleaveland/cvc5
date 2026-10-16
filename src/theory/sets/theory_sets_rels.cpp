@@ -22,6 +22,7 @@
 #include "theory/incomplete_id.h"
 #include "theory/sets/theory_sets.h"
 #include "theory/sets/theory_sets_private.h"
+#include "theory/uf/function_const.h"
 #include "theory/valuation.h"
 #include "util/integer.h"
 #include "util/rational.h"
@@ -560,12 +561,12 @@ void TheorySetsRels::collectRelsInfo()
         {
           if (!is_true_eq)
           {
-            // (not (rel.cyclic-pattern boundVars R body)): no closed walk
-            // over R satisfies body. Key by R's own representative,
+            // (not (rel.cyclic-pattern p R)): no closed walk over R
+            // satisfies p. Key by R's own representative,
             // mirroring d_acyclic_cache, so checkAcyclicPatternDown finds it
             // by looking up the same representative it uses to search known
             // members. The cache holds the literal
-            // (not (rel.cyclic-pattern boundVars R body)).
+            // (not (rel.cyclic-pattern p R)).
             Node u = eqc_node[1];
             d_acyclic_pattern_cache[getRepresentative(u)].push_back(
                 eqc_node.negate());
@@ -2418,25 +2419,33 @@ void TheorySetsRels::applyInstCycleRule(Node atom)
   sendInfer(conc, InferenceId::SETS_RELS_INST_CYCLE, exp);
 }
 
-Node TheorySetsRels::instantiateBody(Node boundVars,
-                                     Node body,
-                                     const std::vector<Node>& args)
+Node TheorySetsRels::applyPattern(Node p, const std::vector<Node>& args)
 {
-  std::vector<Node> vars(boundVars.begin(), boundVars.end());
-  return body.substitute(vars.begin(), vars.end(), args.begin(), args.end());
+  NodeManager* nm = nodeManager();
+  Node lambda = uf::FunctionConst::getDefinition(p);
+  if (lambda.isNull())
+  {
+    std::vector<Node> children{p};
+    children.insert(children.end(), args.begin(), args.end());
+    return nm->mkNode(Kind::APPLY_UF, children);
+  }
+  // beta-reduce
+  Assert(lambda[0].getNumChildren() == args.size());
+  std::vector<Node> vars(lambda[0].begin(), lambda[0].end());
+  return lambda[1].substitute(
+      vars.begin(), vars.end(), args.begin(), args.end());
 }
 
 /*
- * INST_CYCLE_PRED:   (rel.cyclic-pattern boundVars R body) IN Delta*
+ * INST_CYCLE_PRED:   (rel.cyclic-pattern p R) IN Delta*
  *   ------------------------------------------------------------------
- *   C := C U {(w1,w2) in R, ..., (wl,w1) in R,
- *             body[w1/t1,...,wl/tl]}
- * for fresh w1,...,wl, where l = boundVars' length. R may itself be a union
+ *   C := C U {(w1,w2) in R, ..., (wl,w1) in R, (p w1 ... wl)}
+ * for fresh w1,...,wl, where l = the arity of p. R may itself be a union
  * of other relations, but no decomposition of it is needed here (unlike
  * applyInstCycleRule): this rule only ever checks membership in R as a
  * whole, it never needs to know which union operand a given edge came from.
  * Unlike applyInstCycleRule, this fires unconditionally in one shot: the
- * pattern length is fixed by boundVars' own length (there is no
+ * pattern length is fixed by the arity of p (there is no
  * unknown/existential length to case-split and incrementally unroll), so
  * all l skolems and the full conclusion are introduced at once.
  *
@@ -2447,9 +2456,8 @@ Node TheorySetsRels::instantiateBody(Node boundVars,
 void TheorySetsRels::applyInstCyclePatternRule(Node atom)
 {
   Assert(atom.getKind() == Kind::RELATION_CYCLIC_PATTERN);
-  Node boundVars = atom[0];
+  Node p = atom[0];
   Node relUnion = atom[1];
-  Node body = atom[2];
 
   Trace("rels-debug") << "\n[Theory::Rels] *********** Applying "
                          "RELATION_INST_CYCLE_PATTERN rule on "
@@ -2463,19 +2471,20 @@ void TheorySetsRels::applyInstCyclePatternRule(Node atom)
   d_acyclic_pattern_instantiated.insert(atom);
 
   NodeManager* nm = nodeManager();
-  size_t l = boundVars.getNumChildren();
+  std::vector<TypeNode> argTypes = p.getType().getArgTypes();
+  size_t l = argTypes.size();
 
   // Key the skolems on the cyclic-pattern atom itself (not just relUnion),
   // so distinct cyclic-pattern instances over the same relation -- a
-  // different body, or more than one pattern asserted -- each get their own
-  // skolem sequence instead of colliding with each other or with
+  // different predicate, or more than one pattern asserted -- each get their
+  // own skolem sequence instead of colliding with each other or with
   // applyInstCycleRule's SK_CYCLE_ELEM sequence for the base predicate.
   std::vector<Node> ws;
   ws.reserve(l);
   for (size_t i = 0; i < l; i++)
   {
     ws.push_back(
-        d_skCache.mkTypedSkolemCached(boundVars[i].getType(),
+        d_skCache.mkTypedSkolemCached(argTypes[i],
                                       atom,
                                       nm->mkConstInt(Rational(i)),
                                       SkolemCache::SK_CYCLE_PATTERN_ELEM,
@@ -2500,7 +2509,7 @@ void TheorySetsRels::applyInstCyclePatternRule(Node atom)
   // {
   //   conjuncts.push_back(nm->mkNode(Kind::DISTINCT, ws));
   // }
-  conjuncts.push_back(instantiateBody(boundVars, body, ws));
+  conjuncts.push_back(applyPattern(p, ws));
 
   Node conc = conjuncts.size() == 1 ? conjuncts[0]
                                     : nm->mkNode(Kind::AND, conjuncts);
@@ -2513,13 +2522,13 @@ void TheorySetsRels::applyInstCyclePatternRule(Node atom)
 
 /*
  * ACYCLIC_DOWN_PRED:  (w1,w2) in R ... (wl,w1) in R
- *                     NOT (rel.cyclic-pattern boundVars R body) in Delta*
+ *                     NOT (rel.cyclic-pattern p R) in Delta*
  *   ------------------------------------------------------------------
- *                     Delta := Delta U {NOT body[w1/t1,...,wl/tl]}
- * where t1,...,tl are boundVars' elements, searching R's currently-known
- * members for closed walks w1,...,wl (l = boundVars' length). Fires
- * unconditionally for every such walk found: see fireAcyclicPatternDown for
- * why this remains sound without gating on provable disequality.
+ *                     Delta := Delta U {NOT (p w1 ... wl)}
+ * searching R's currently-known members for closed walks w1,...,wl
+ * (l = the arity of p). Fires unconditionally for every such walk found: see
+ * fireAcyclicPatternDown for why this remains sound without gating on
+ * provable disequality.
  *
  * EXPERIMENT: this rule no longer requires w1,...,wl to be provably distinct
  * before firing (was previously an antecedent conjunct -- see the
@@ -2553,20 +2562,20 @@ void TheorySetsRels::checkAcyclicPatternDown()
 
     for (const Node& atom : cacheEntry.second)
     {
-      // atom is (not (rel.cyclic-pattern boundVars R body)); atom[0] is the
-      // inner positive RELATION_CYCLIC_PATTERN term.
-      size_t l = atom[0][0].getNumChildren();
+      // atom is (not (rel.cyclic-pattern p R)); atom[0] is the inner
+      // positive RELATION_CYCLIC_PATTERN term, the arity of p is the length
+      // of the walk.
+      size_t l = atom[0][0].getType().getNumChildren() - 1;
       for (const auto& startEntry : adj)
       {
         std::vector<size_t> pathIdx;
-        std::vector<Node> pathReps{startEntry.first};
         searchAcyclicPatternWalks(adj,
                                   members,
                                   exps,
                                   startEntry.first,
+                                  startEntry.first,
                                   l,
                                   pathIdx,
-                                  pathReps,
                                   atom);
       }
     }
@@ -2578,12 +2587,11 @@ void TheorySetsRels::searchAcyclicPatternWalks(
     const std::vector<Node>& members,
     const std::vector<Node>& exps,
     Node startRep,
+    Node curRep,
     size_t l,
     std::vector<size_t>& pathIdx,
-    std::vector<Node>& pathReps,
     Node atom)
 {
-  Node curRep = pathReps.back();
   std::map<Node, std::vector<size_t>>::const_iterator it = adj.find(curRep);
   if (it == adj.end())
   {
@@ -2607,23 +2615,19 @@ void TheorySetsRels::searchAcyclicPatternWalks(
     }
     return;
   }
+  // The walk may revisit a node: a closed walk of length l is any sequence
+  // of l edges that returns to its start, and the positive rule
+  // (applyInstCyclePatternRule) admits repeated elements too. For example,
+  // a self-loop (a, a) gives the walk a -> a -> a of length 2. Pruning the
+  // revisited nodes here would miss these walks and accept models that
+  // falsify the negated pattern. The depth is bounded by l.
   for (size_t idx : it->second)
   {
     Node destRep =
         getRepresentative(TupleUtils::nthElementOfTuple(members[idx], 1));
-    // Search-pruning only (not a soundness requirement, see
-    // fireAcyclicPatternDown): do not extend the walk through a node whose
-    // representative is already visited.
-    if (std::find(pathReps.begin(), pathReps.end(), destRep)
-        != pathReps.end())
-    {
-      continue;
-    }
     pathIdx.push_back(idx);
-    pathReps.push_back(destRep);
     searchAcyclicPatternWalks(
-        adj, members, exps, startRep, l, pathIdx, pathReps, atom);
-    pathReps.pop_back();
+        adj, members, exps, startRep, destRep, l, pathIdx, atom);
     pathIdx.pop_back();
   }
 }
@@ -2649,7 +2653,7 @@ void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
     ws.push_back(TupleUtils::nthElementOfTuple(members[pathIdx[i]], 0));
   }
 
-  // atom is the literal (not (rel.cyclic-pattern boundVars R body)) -- the
+  // atom is the literal (not (rel.cyclic-pattern p R)) -- the
   // actual asserted fact that justifies this conclusion.
   std::vector<Node> reasonConjuncts;
   reasonConjuncts.push_back(atom);
@@ -2695,9 +2699,8 @@ void TheorySetsRels::fireAcyclicPatternDown(const std::vector<Node>& members,
                     : nm->mkNode(Kind::AND, reasonConjuncts);
 
   // atom[0] is the inner positive RELATION_CYCLIC_PATTERN term: atom[0][0]
-  // is boundVars, atom[0][2] is body.
-  Node conc =
-      nm->mkNode(Kind::NOT, instantiateBody(atom[0][0], atom[0][2], ws));
+  // is its predicate p.
+  Node conc = nm->mkNode(Kind::NOT, applyPattern(atom[0][0], ws));
 
   Trace("rels-cycles") << "AcyclicPatternDown: " << reason << " => " << conc
                        << std::endl;

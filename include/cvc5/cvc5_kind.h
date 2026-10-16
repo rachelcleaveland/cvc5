@@ -3965,35 +3965,39 @@ enum ENUM(Kind)
    */
   EVALUE(RELATION_CYCLIC),
   /**
-   * Relation acyclic pattern predicate.
+   * Relation cyclic pattern predicate.
    *
    * \rst
-   * An acyclic pattern is specified by a variable list :math:`t_1 ... t_l`
-   * (:math:`l \geq 1`), a tuple of binary relations :math:`R_1, ..., R_k`
-   * that all share a common domain Sort T matching :math:`t_1 ... t_l`'s
-   * Sort, and a Boolean term :math:`P[t_1...t_l]`. It holds iff there is no
-   * closed walk :math:`w_1,...,w_l` over :math:`R_1 \cup ... \cup R_k`
-   * (i.e. :math:`(w_1,w_2) \in R_1 \cup ... \cup R_k`, ...,
-   * :math:`(w_l,w_1) \in R_1 \cup ... \cup R_k`) with :math:`w_1,...,w_l`
-   * pairwise distinct that satisfies :math:`P[t_1:=w_1,...,t_l:=w_l]`. The
-   * variable list's length fixes the pattern length :math:`l`.
+   * (rel.cyclic-pattern :math:`p \; R`) takes a predicate :math:`p` of Sort
+   * :math:`(\rightarrow T_1 \; \dots \; T_l \; Bool)` with
+   * :math:`l \geq 1` as a first argument, and a binary relation :math:`R` of
+   * Sort (Relation :math:`T \; T`) as a second argument, where every
+   * :math:`T_i` is :math:`T`. It holds iff there is a closed walk
+   * :math:`w_1, \dots, w_l` over :math:`R`, i.e.
+   * :math:`(w_1, w_2) \in R, \dots, (w_{l-1}, w_l) \in R` and
+   * :math:`(w_l, w_1) \in R`, such that :math:`p(w_1, \dots, w_l)` holds.
+   * The arity of :math:`p` fixes the length :math:`l` of the walk. Typically
+   * :math:`p` is a lambda, as in
+   * (rel.cyclic-pattern (lambda ((t1 T) (t2 T)) (distinct t1 t2)) R).
+   *
+   * - Arity: ``2``
+   *
+   *   - ``1:`` Term of function Sort
+   *     :math:`(\rightarrow T \; \dots \; T \; Bool)`
+   *   - ``2:`` Term of relation Sort (Relation :math:`T \; T`)
    * \endrst
-   *
-   * - Arity: ``3``
-   *
-   *   - ``1:`` Term of Kind :cpp:enumerator:`VARIABLE_LIST`
-   *   - ``2:`` Term of tuple Sort whose elements are binary relation Sorts
-   *     of type ``(Relation T T)`` for the variable list's Sort T
-   *   - ``3:`` Term of Sort Bool (the pattern's body)
    *
    * - Create Term of this Kind with:
    *
    *   - TermManager::mkTerm(Kind, const std::vector<Term>&)
    *   - TermManager::mkTerm(const Op&, const std::vector<Term>&)
    *
-   * - Create Op of this kind with:
+   * \rst
+   * .. warning::
    *
-   *   - TermManager::mkOp(Kind, const std::vector<uint32_t>&)
+   *     This kind is experimental and may be changed or removed in future
+   *     versions.
+   * \endrst
    */
   EVALUE(RELATION_CYCLIC_PATTERN),
   /**

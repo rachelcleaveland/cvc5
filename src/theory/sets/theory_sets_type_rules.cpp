@@ -1106,10 +1106,10 @@ TypeNode RelCyclicTypeRule::computeType(NodeManager* nodeManager,
   return nodeManager->booleanType();
 }
 
-TypeNode RelCyclicPatternTypeRule::preComputeType(CVC5_UNUSED NodeManager* nm,
+TypeNode RelCyclicPatternTypeRule::preComputeType(NodeManager* nm,
                                                   CVC5_UNUSED TNode n)
 {
-  return TypeNode::null();
+  return nm->booleanType();
 }
 TypeNode RelCyclicPatternTypeRule::computeType(NodeManager* nodeManager,
                                                TNode n,
@@ -1119,66 +1119,65 @@ TypeNode RelCyclicPatternTypeRule::computeType(NodeManager* nodeManager,
   Assert(n.getKind() == Kind::RELATION_CYCLIC_PATTERN);
   if (check)
   {
-    if (n[0].getKind() != Kind::BOUND_VAR_LIST)
-    {
-      if (errOut)
-      {
-        (*errOut) << "first argument of cyclic-pattern is not a bound "
-                     "variable list";
-      }
-      return TypeNode::null();
-    }
-    // Same shape as (rel.cyclic R): a single binary relation. Track the
-    // domain type so it can be checked against the bound variables' types
-    // below.
     TypeNode relType = n[1].getTypeOrNull();
     if (!relType.isRelation())
     {
       if (errOut)
       {
-        (*errOut) << "cyclic-pattern operates on a non-relation";
+        (*errOut) << "rel.cyclic-pattern expects a relation as its second "
+                     "argument";
       }
       return TypeNode::null();
     }
     std::vector<TypeNode> tupleTypes = relType[0].getTupleTypes();
-    if (tupleTypes.size() != 2)
+    if (tupleTypes.size() != 2 || !tupleTypes[0].isComparableTo(tupleTypes[1]))
     {
       if (errOut)
       {
-        (*errOut) << "cyclic-pattern operates on a non-binary relation";
+        (*errOut) << "rel.cyclic-pattern expects a binary relation of type "
+                     "(Relation T T)";
       }
       return TypeNode::null();
     }
-    if (!tupleTypes[0].isComparableTo(tupleTypes[1]))
+    TypeNode functionType = n[0].getTypeOrNull();
+    if (!functionType.isMaybeKind(Kind::FUNCTION_TYPE))
     {
       if (errOut)
       {
-        (*errOut) << "cyclic-pattern operates on a binary relation whose "
-                     "columns have different types";
+        (*errOut) << "rel.cyclic-pattern expects a predicate as its first "
+                     "argument. Found a term of type '"
+                  << functionType << "'.";
       }
       return TypeNode::null();
     }
-    TypeNode domainType = tupleTypes[0];
-    for (const Node& v : n[0])
+    // note that if functionType is abstract, we don't check whether it
+    // matches the relation.
+    if (functionType.isFunction())
     {
-      if (!v.getTypeOrNull().isComparableTo(domainType))
+      for (const TypeNode& argType : functionType.getArgTypes())
+      {
+        if (!argType.isComparableTo(tupleTypes[0]))
+        {
+          if (errOut)
+          {
+            (*errOut) << "rel.cyclic-pattern expects a predicate whose "
+                         "arguments have the element type of the relation ("
+                      << tupleTypes[0] << "). Found a function of type '"
+                      << functionType << "'.";
+          }
+          return TypeNode::null();
+        }
+      }
+      TypeNode rangeType = functionType.getRangeType();
+      if (!rangeType.isBoolean() && !rangeType.isFullyAbstract())
       {
         if (errOut)
         {
-          (*errOut) << "cyclic-pattern bound variable type does not match "
-                       "the relation's domain type";
+          (*errOut) << "rel.cyclic-pattern expects a predicate returning "
+                       "Bool.";
         }
         return TypeNode::null();
       }
-    }
-    TypeNode bodyType = n[2].getTypeOrNull();
-    if (!bodyType.isBoolean())
-    {
-      if (errOut)
-      {
-        (*errOut) << "body of cyclic-pattern is not Boolean";
-      }
-      return TypeNode::null();
     }
   }
   return nodeManager->booleanType();

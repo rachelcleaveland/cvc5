@@ -9,7 +9,7 @@
 ; rel.cyclic-pattern has no ground-model evaluation yet (see
 ; acyclic-pattern-inst-cycle-sat.smt2's comment for the same, pre-existing
 ; gap).
-(set-logic ALL)
+(set-logic HO_ALL)
 (set-info :status sat)
 (declare-sort Atom 0)
 (declare-fun a () Atom)
@@ -23,5 +23,5 @@
              (set.union (set.singleton (tuple b a))
              (set.union (set.singleton (tuple c d))
                         (set.singleton (tuple d c)))))))
-(assert (not (rel.cyclic-pattern ((t1 Atom) (t2 Atom)) R (= t1 e))))
+(assert (not (rel.cyclic-pattern (lambda ((t1 Atom) (t2 Atom)) (= t1 e)) R)))
 (check-sat)

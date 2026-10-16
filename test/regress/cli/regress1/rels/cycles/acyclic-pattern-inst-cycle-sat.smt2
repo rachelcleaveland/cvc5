@@ -12,9 +12,9 @@
 ; conjuncts it derives (see the base tester), not via re-evaluating this
 ; term; this is a known gap to close when rel.cyclic-pattern gets a
 ; rewriter/model-value implementation.
-(set-logic ALL)
+(set-logic HO_ALL)
 (set-info :status sat)
 (declare-sort Atom 0)
 (declare-fun R () (Set (Tuple Atom Atom)))
-(assert (rel.cyclic-pattern ((t1 Atom) (t2 Atom)) R true))
+(assert (rel.cyclic-pattern (lambda ((t1 Atom) (t2 Atom)) true) R))
 (check-sat)
